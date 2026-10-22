@@ -15,31 +15,46 @@ type CartContextValue = {
 const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "qurraojos-cart-v1";
 
+function readStoredCart(): CartItem[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((item): item is CartItem =>
+      typeof item?.productId === "string" &&
+      typeof item?.variantId === "string" &&
+      Number.isInteger(item?.quantity) &&
+      item.quantity > 0 &&
+      item.quantity <= 20,
+    );
+  } catch (error) {
+    console.error("Unable to restore the saved cart:", error);
+    return [];
+  }
+}
+
+function writeStoredCart(items: CartItem[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch (error) {
+    console.error("Unable to persist the cart:", error);
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-      if (Array.isArray(saved)) {
-        setItems(saved.filter((item): item is CartItem =>
-          typeof item?.productId === "string" &&
-          typeof item?.variantId === "string" &&
-          Number.isInteger(item?.quantity) &&
-          item.quantity > 0 &&
-          item.quantity <= 20,
-        ));
-      }
-    } catch (error) {
-      console.error("Unable to restore the saved cart:", error);
-    } finally {
-      setHydrated(true);
-    }
+    setItems(readStoredCart());
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (hydrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    if (hydrated) writeStoredCart(items);
   }, [hydrated, items]);
 
   const value = useMemo<CartContextValue>(() => ({

@@ -33,7 +33,7 @@ export default async function ProductPage({ params }: { params: { locale: Locale
   return (
     <section className="section product-detail">
       {demo && <div className="site-notice">{copy.demoNotice}</div>}
-      <div className={`detail-art art-${category?.accent ?? "rose"}`}>{product.imageUrl ? <Image src={product.imageUrl} alt={localized(product.name, params.locale)} fill sizes="(max-width: 640px) 88vw, 45vw" unoptimized /> : <span>{category?.icon ?? "♡"}</span>}</div>
+      <div className={`detail-art art-${category?.accent ?? "rose"}`}>{product.imageUrl ? <Image src={product.imageUrl} alt={localized(product.name, params.locale)} fill sizes="(max-width: 640px) 88vw, 45vw" /> : <span>{category?.icon ?? "♡"}</span>}</div>
       <div className="detail-info"><div className="breadcrumbs"><Link href={`/${params.locale}`}>{copy.home}</Link><span>/</span><Link href={`/${params.locale}/catalog`}>{copy.catalog}</Link><span>/</span>{category && localized(category.name, params.locale)}</div>
         <span className="eyebrow">{category && localized(category.name, params.locale)}</span><h1>{localized(product.name, params.locale)}</h1><strong className="detail-price">{formatPrice(product.priceMad, params.locale)}</strong><p className="detail-description">{localized(product.description, params.locale)}</p>
         <div className="stock-line"><span className={isProductAvailable(product) ? "stock-dot" : "stock-dot unavailable"} />{isProductAvailable(product) ? copy.inStock : copy.outOfStock}</div>

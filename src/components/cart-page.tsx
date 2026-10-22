@@ -91,7 +91,7 @@ export function CartPage({ locale, products, demo, catalogError }: { locale: Loc
       <div className="cart-layout"><div className="cart-lines">
         {cartLines.map(({ item, product, variant }) => product ? (
           <article className="cart-line" key={`${item.productId}:${item.variantId}`}>
-            <div className="cart-line-art">{product.imageUrl ? <Image src={product.imageUrl} alt="" fill sizes="75px" unoptimized /> : <span>{product.name.ar.slice(0, 1)}</span>}</div>
+            <div className="cart-line-art">{product.imageUrl ? <Image src={product.imageUrl} alt="" fill sizes="75px" /> : <span>{product.name.ar.slice(0, 1)}</span>}</div>
             <div className="cart-line-info"><h2>{localized(product.name, locale)}</h2>{variant && <small>{localized(variant.label, locale)}</small>}<strong>{formatPrice(product.priceMad * item.quantity, locale)}</strong>{(!isProductAvailable(product) || (product.variants.length > 0 && !variant?.available)) && <small className="error-text">{copy.outOfStock}</small>}</div>
             <div className="quantity-control"><button aria-label="−" onClick={() => item.quantity > 1 ? setQuantity(item.productId, item.variantId, item.quantity - 1) : remove(item.productId, item.variantId)}>−</button><span>{item.quantity}</span><button aria-label="+" onClick={() => setQuantity(item.productId, item.variantId, item.quantity + 1)}>+</button></div>
             <button className="remove-link" onClick={() => remove(item.productId, item.variantId)}>{copy.delete}</button>

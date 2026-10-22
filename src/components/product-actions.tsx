@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isProductAvailable, type Product } from "@/lib/catalog";
 import { useCart } from "@/lib/cart-context";
 import { getCopy, localized, type Locale } from "@/lib/locale";
@@ -8,11 +8,17 @@ import { getCopy, localized, type Locale } from "@/lib/locale";
 export function ProductActions({ product, locale }: { product: Product; locale: Locale }) {
   const copy = getCopy(locale);
   const { add } = useCart();
-  const options = product.variants.length > 0
+  const options = useMemo(() => product.variants.length > 0
     ? product.variants.filter((variant) => variant.available)
-    : [{ id: "default", label: { ar: copy.noVariants, fr: copy.noVariants, en: copy.noVariants, es: copy.noVariants }, available: true }];
+    : [{ id: "default", label: { ar: copy.noVariants, fr: copy.noVariants, en: copy.noVariants, es: copy.noVariants }, available: true }], [copy.noVariants, product.variants]);
   const [selected, setSelected] = useState(options[0]?.id ?? "");
   const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    setSelected(options[0]?.id ?? "");
+    setAdded(false);
+  }, [options]);
+
   return (
     <div className="product-actions">
       {product.variants.length > 0 && (

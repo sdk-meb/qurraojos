@@ -9,7 +9,7 @@ export function ProductCard({ product, locale }: { product: Product; locale: Loc
   return (
     <article className="product-card">
       <Link className={`product-art art-${category?.accent ?? "rose"}`} href={`/${locale}/products/${product.slug}`} aria-label={localized(product.name, locale)}>
-        {product.imageUrl ? <Image src={product.imageUrl} alt={localized(product.name, locale)} fill sizes="(max-width: 640px) 44vw, (max-width: 900px) 28vw, 22vw" unoptimized /> : <span aria-hidden="true">{category?.icon ?? "♡"}</span>}
+        {product.imageUrl ? <Image src={product.imageUrl} alt={localized(product.name, locale)} fill sizes="(max-width: 640px) 44vw, (max-width: 900px) 28vw, 22vw" /> : <span aria-hidden="true">{category?.icon ?? "♡"}</span>}
         {product.id.startsWith("demo-") && <small className="demo-pill">{copy.sample}</small>}
       </Link>
       <div className="product-card-info">
