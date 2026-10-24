@@ -4,14 +4,14 @@ Mobile-first storefront for QurraOjos قرة عيني in Morocco: Arabic-first p
 
 ## Requirements
 
-- Node.js 18.18 or newer (Next.js 14; use a currently supported Node LTS for production)
+- Node.js 22.x (pinned for consistent local and Vercel builds)
 - pnpm
 - A Supabase project for persistent products, owner authentication, and product-image uploads
 
 ## Run locally
 
 ```sh
-pnpm install --ignore-scripts
+pnpm install --frozen-lockfile
 cp .env.example .env.local
 pnpm dev
 ```
