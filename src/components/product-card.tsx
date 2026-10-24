@@ -1,15 +1,22 @@
 import Link from "next/link";
-import Image from "next/image";
-import { findCategory, formatPrice, isProductAvailable, type Product } from "@/lib/catalog";
+import { findCategory, formatPrice, isProductAvailable, productImageUrls, type Product } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
+import { ProductImage } from "@/components/product-image";
 
 export function ProductCard({ product, locale }: { product: Product; locale: Locale }) {
   const copy = getCopy(locale);
   const category = findCategory(product.categoryId);
+  const imageUrls = productImageUrls(product);
   return (
     <article className="product-card">
       <Link className={`product-art art-${category?.accent ?? "rose"}`} href={`/${locale}/products/${product.slug}`} aria-label={localized(product.name, locale)}>
-        {product.imageUrl ? <Image src={product.imageUrl} alt={localized(product.name, locale)} fill sizes="(max-width: 640px) 44vw, (max-width: 900px) 28vw, 22vw" /> : <span aria-hidden="true">{category?.icon ?? "♡"}</span>}
+        <ProductImage
+          sources={imageUrls}
+          alt={localized(product.name, locale)}
+          sizes="(max-width: 640px) 44vw, (max-width: 900px) 28vw, 22vw"
+          fallback={category?.icon ?? "♡"}
+          cycleOnHover
+        />
         {product.id.startsWith("demo-") && <small className="demo-pill">{copy.sample}</small>}
       </Link>
       <div className="product-card-info">

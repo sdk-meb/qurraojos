@@ -21,7 +21,7 @@ export function StoreHeader({ locale }: { locale: Locale }) {
         <nav className="main-nav" aria-label={copy.catalog}>
           <Link href={`/${locale}`}>{copy.home}</Link>
           <Link href={`/${locale}/catalog`}>{copy.catalog}</Link>
-          <a href={`/${locale}#about`}>{copy.about}</a>
+          <Link href={`/${locale}#about`}>{copy.about}</Link>
         </nav>
         <div className="header-actions">
           <div className="locale-switch" aria-label="Language">

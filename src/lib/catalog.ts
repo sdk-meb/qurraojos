@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Locale } from "@/lib/locale";
+import { normalizeImageUrl } from "@/lib/image-url";
 
 export type LocalizedText = Record<Locale, string>;
 export type ProductVariant = {
@@ -23,6 +24,15 @@ export type Product = {
   priceMad: number;
   availability: "in-stock" | "out-of-stock";
   imageUrl?: string | null;
+  imageUrls?: string[];
+  feedItemId?: string | null;
+  brand?: string | null;
+  condition?: string | null;
+  productUrl?: string | null;
+  regularPriceMad?: number | null;
+  salePriceMad?: number | null;
+  quantityToSell?: number | null;
+  feedAttributes?: Record<string, string>;
   variants: ProductVariant[];
 };
 
@@ -77,7 +87,16 @@ export function getSupabase() {
   );
 }
 
-function fromRow(row: Record<string, unknown>): Product {
+export function productFromRow(row: Record<string, unknown>): Product {
+  const storedImageUrls = Array.isArray(row.image_urls)
+    ? row.image_urls.filter((imageUrl): imageUrl is string => typeof imageUrl === "string").map(normalizeImageUrl)
+    : [];
+  const rawImageUrl = (row.image_url as string | null) ?? storedImageUrls[0] ?? null;
+  const imageUrl = rawImageUrl ? normalizeImageUrl(rawImageUrl) : null;
+  const imageUrls = storedImageUrls.length ? storedImageUrls : imageUrl ? [imageUrl] : [];
+  const feedAttributes = row.feed_attributes && typeof row.feed_attributes === "object" && !Array.isArray(row.feed_attributes)
+    ? row.feed_attributes as Record<string, string>
+    : {};
   return {
     id: String(row.id),
     slug: String(row.slug),
@@ -86,7 +105,16 @@ function fromRow(row: Record<string, unknown>): Product {
     description: row.description as LocalizedText,
     priceMad: Number(row.price_mad),
     availability: row.available ? "in-stock" : "out-of-stock",
-    imageUrl: (row.image_url as string | null) ?? null,
+    imageUrl,
+    imageUrls,
+    feedItemId: (row.feed_item_id as string | null) ?? null,
+    brand: (row.brand as string | null) ?? null,
+    condition: (row.condition as string | null) ?? null,
+    productUrl: (row.product_url as string | null) ?? null,
+    regularPriceMad: (row.regular_price_mad as number | null) ?? null,
+    salePriceMad: (row.sale_price_mad as number | null) ?? null,
+    quantityToSell: (row.quantity_to_sell_on_facebook as number | null) ?? null,
+    feedAttributes,
     variants: (row.variants as ProductVariant[] | null) ?? [],
   };
 }
@@ -98,16 +126,23 @@ export async function getProducts(): Promise<{ products: Product[]; demo: boolea
       ? { products: demoProducts, demo: true, configured: false }
       : { products: [], demo: false, configured: false };
   }
-  const { data, error } = await supabase.from("products").select("id, slug, category_id, name, description, price_mad, available, image_url, variants").order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
   if (error) {
     console.error("Unable to load the public catalogue:", error.message);
     return { products: [], demo: false, configured: true, error: true };
   }
-  return { products: (data ?? []).map((row) => fromRow(row as Record<string, unknown>)), demo: false, configured: true };
+  return { products: (data ?? []).map((row) => productFromRow(row as Record<string, unknown>)), demo: false, configured: true };
 }
 
 export function findCategory(id: string) {
   return categories.find((category) => category.id === id);
+}
+
+export function productImageUrls(product: Product) {
+  return Array.from(new Set([
+    ...(product.imageUrls ?? []).map(normalizeImageUrl),
+    ...(product.imageUrl ? [normalizeImageUrl(product.imageUrl)] : []),
+  ]));
 }
 
 export function isProductAvailable(product: Product) {

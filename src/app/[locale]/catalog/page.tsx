@@ -1,4 +1,5 @@
 import { ProductCard } from "@/components/product-card";
+import { CatalogFilters } from "@/components/catalog-filters";
 import { categories, getProducts } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 
@@ -20,7 +21,7 @@ export default async function CatalogPage({ params, searchParams }: { params: { 
       {!configured && <div className="site-notice">{demo ? copy.demoNotice : copy.setupNotice}</div>}
       {error && <div className="site-notice" role="alert">{copy.catalogError}</div>}
       <div className="catalog-intro"><span className="eyebrow">QURRAOJOS · {copy.catalog}</span><h1>{currentCategory ? localized(currentCategory.name, params.locale) : copy.all}</h1><p>{currentCategory ? localized(currentCategory.description, params.locale) : copy.aboutText}</p></div>
-      <form className="catalog-controls" action={`/${params.locale}/catalog`}><label className="search-box"><span aria-hidden="true">⌕</span><input name="q" defaultValue={searchParams.q} placeholder={copy.search} /></label><div className="category-filters"><a href={`/${params.locale}/catalog`} className={!category ? "active" : ""}>{copy.all}</a>{categories.map((item) => <a key={item.id} href={`/${params.locale}/catalog?category=${item.id}`} className={category === item.id ? "active" : ""}>{localized(item.name, params.locale)}</a>)}</div></form>
+      <CatalogFilters locale={params.locale} query={searchParams.q ?? ""} category={category} />
       {filtered.length ? <div className="product-grid">{filtered.map((product) => <ProductCard key={product.id} product={product} locale={params.locale} />)}</div> : error ? <div className="empty-state" role="alert"><h2>{copy.catalogError}</h2></div> : <div className="empty-state"><span>⌕</span><h2>{copy.emptySearch}</h2></div>}
     </section>
   );
