@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ProductActions } from "@/components/product-actions";
-import { ProductImage } from "@/components/product-image";
+import { ProductGallery } from "@/components/product-gallery";
 import { findCategory, formatPrice, getProducts, isProductAvailable, productImageUrls } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 
@@ -34,10 +34,16 @@ export default async function ProductPage({ params }: { params: { locale: Locale
   return (
     <section className="section product-detail">
       {demo && <div className="site-notice">{copy.demoNotice}</div>}
-      <div className="detail-gallery">
-        <div className={`detail-art art-${category?.accent ?? "rose"}`}><ProductImage sources={images} alt={localized(product.name, params.locale)} sizes="(max-width: 640px) 88vw, 45vw" fallback={category?.icon ?? "♡"} /></div>
-        {images.length > 1 && <div className="detail-image-thumbnails">{images.slice(1).map((imageUrl) => <div className="detail-image-thumbnail" key={imageUrl}><ProductImage sources={[imageUrl]} alt={localized(product.name, params.locale)} sizes="(max-width: 640px) 20vw, 8vw" fallback={category?.icon ?? "♡"} fallbackClassName="thumbnail-image-fallback" /></div>)}</div>}
-      </div>
+      <ProductGallery
+        images={images}
+        alt={localized(product.name, params.locale)}
+        accent={category?.accent ?? "rose"}
+        sizes="(max-width: 640px) 88vw, 45vw"
+        fallback={category?.icon ?? "♡"}
+        imageLabel={copy.productImage}
+        previousLabel={copy.previousImage}
+        nextLabel={copy.nextImage}
+      />
       <div className="detail-info"><div className="breadcrumbs"><Link href={`/${params.locale}`}>{copy.home}</Link><span>/</span><Link href={`/${params.locale}/catalog`}>{copy.catalog}</Link><span>/</span>{category && localized(category.name, params.locale)}</div>
         <span className="eyebrow">{category && localized(category.name, params.locale)}</span><h1>{localized(product.name, params.locale)}</h1><strong className="detail-price">{formatPrice(product.priceMad, params.locale)}</strong><p className="detail-description">{localized(product.description, params.locale)}</p>
         <div className="stock-line"><span className={isProductAvailable(product) ? "stock-dot" : "stock-dot unavailable"} />{isProductAvailable(product) ? copy.inStock : copy.outOfStock}</div>

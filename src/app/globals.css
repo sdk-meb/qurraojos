@@ -100,6 +100,8 @@ img { display: block; max-width: 100%; }
 .product-art > span { font-size: 68px; filter: drop-shadow(0 12px 9px #5f514226); transition: transform .25s; }
 .product-card:hover .product-art > span { transform: translateY(-5px) rotate(-2deg); }
 .product-art img, .detail-art img, .cart-line-art img, .admin-thumb img, .image-preview img { width: 100%; height: 100%; object-fit: cover; }
+.product-art img { transition: transform .35s ease; }
+.product-art:hover img, .product-art:focus-visible img { transform: scale(1.03); }
 .art-rose { background: #eee0db; }.art-gold { background: #eee7d5; }.art-sage { background: #e1e6d9; }.art-blue { background: #dfe8e5; }
 .demo-pill { position: absolute; top: 10px; left: 10px; padding: 5px 8px; color: #655b48; background: #fff9eacc; font-size: 8px; }
 .product-card-info { display: grid; gap: 7px; padding-top: 12px; }
@@ -146,10 +148,23 @@ img { display: block; max-width: 100%; }
 .product-detail { display: grid; grid-template-columns: 1.05fr .95fr; align-items: center; gap: 8%; min-height: 610px; }
 .detail-gallery { min-width: 0; width: 100%; }
 .detail-art { position: relative; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; }
-.detail-art > span { font-size: 150px; }
-.detail-image-thumbnails { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
-.detail-image-thumbnail { position: relative; aspect-ratio: 1; overflow: hidden; background: var(--cream); }
+.detail-art.art-rose { background: #eee0db; }.detail-art.art-gold { background: #eee7d5; }.detail-art.art-sage { background: #e1e6d9; }.detail-art.art-blue { background: #dfe8e5; }
+.detail-art > .product-image-fallback { font-size: 150px; }
+.detail-art img { object-fit: contain; padding: 5%; animation: detail-image-enter .3s ease both; }
+.detail-gallery-control { position: absolute; top: 50%; z-index: 1; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid #fff9; border-radius: 50%; color: var(--ink); background: #fffefaeb; box-shadow: 0 3px 12px #30271a1a; cursor: pointer; font-size: 25px; line-height: 1; transform: translateY(-50%); transition: background .2s, box-shadow .2s; }
+.detail-gallery-control:hover { background: #fff; box-shadow: 0 5px 16px #30271a26; }
+.detail-gallery-previous { inset-inline-start: 14px; }
+.detail-gallery-next { inset-inline-end: 14px; }
+:dir(rtl) .detail-gallery-control { transform: translateY(-50%) rotate(180deg); }
+.detail-gallery-count { position: absolute; inset-inline-end: 14px; bottom: 14px; padding: 6px 9px; color: #4d4a43; background: #fffefaeb; font-size: 9px; letter-spacing: .08em; }
+.detail-image-thumbnails { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; padding: 2px 1px 5px; scrollbar-color: #b9b6a8 transparent; scrollbar-width: thin; }
+.detail-image-thumbnail { position: relative; flex: 0 0 50px; width: 50px; aspect-ratio: 1; overflow: hidden; border: 1px solid transparent; padding: 0; background: var(--cream); cursor: pointer; }
+.detail-image-thumbnail.is-active { border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
+.detail-image-thumbnail:focus-visible, .detail-gallery-control:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.detail-image-thumbnail img { transition: transform .25s; }
+.detail-image-thumbnail:hover img { transform: scale(1.04); }
 .thumbnail-image-fallback { width: 100%; height: 100%; display: grid; place-items: center; color: var(--muted); font-size: 25px; }
+@keyframes detail-image-enter { from { opacity: .65; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
 .detail-info { max-width: 490px; }
 .breadcrumbs { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 27px; color: #918b7f; font-size: 9px; }
 .detail-info h1 { margin: 10px 0; font-family: "Noto Sans Arabic", var(--serif); font-size: 32px; font-weight: 500; }
@@ -272,7 +287,7 @@ img { display: block; max-width: 100%; }
   .trust-strip { grid-template-columns: 1fr; gap: 18px; padding: 28px 8%; }.trust-strip > div { border: 0; padding: 0; }
   .site-footer { padding: 35px 7% 85px; }.footer-top { grid-template-columns: 1fr 1fr; gap: 20px; }.footer-top > div:first-child { grid-column: 1 / -1; }.footer-bottom { font-size: 8px; }
   .catalog-intro { padding: 10px 0 18px; }.catalog-intro h1 { font-size: 31px; }.category-filters { justify-content: start; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; }.category-filters a { flex: 0 0 auto; }
-  .product-detail { grid-template-columns: 1fr; gap: 25px; min-height: auto; }.detail-art { max-height: 390px; }.detail-art > span { font-size: 110px; }.detail-info { max-width: none; }.detail-info h1 { font-size: 27px; }
+  .product-detail { grid-template-columns: 1fr; gap: 25px; min-height: auto; }.detail-art { max-height: 390px; }.detail-art > .product-image-fallback { font-size: 110px; }.detail-image-thumbnail { flex-basis: 44px; width: 44px; }.detail-info { max-width: none; }.detail-info h1 { font-size: 27px; }
   .cart-heading h1 { font-size: 32px; }.cart-layout { grid-template-columns: 1fr; gap: 25px; }.cart-line { grid-template-columns: 58px 1fr auto; gap: 10px; }.cart-line-art { width: 58px; height: 62px; }.cart-line-info h2 { font-size: 11px; }.cart-line .remove-link { grid-column: 2; justify-self: start; }.quantity-control { grid-column: 3; grid-row: 1; }.checkout-card { position: static; padding: 18px; }
   .admin-page { padding: 20px 3%; }.admin-panel { padding: 20px 16px; }.admin-heading { align-items: start; }.admin-heading h1 { font-size: 29px; }.editor-grid, .csv-import { grid-template-columns: 1fr; }.field-full { grid-column: auto; }.drive-folder-picker { grid-template-columns: 1fr; }.drive-folder-picker > p, .drive-folder-tree { grid-column: auto; }  .translation-fields { grid-template-columns: 1fr; }.translation-fields p { grid-column: auto; }.variant-row { grid-template-columns: 1fr auto; }.variant-translations { grid-column: 1 / -1; }.variant-availability { grid-column: 1; }.admin-product { grid-template-columns: 40px 1fr auto; gap: 7px; }.admin-product .text-button:last-child { grid-column: 3; }.admin-product small { line-height: 1.5; }.admin-toolbar { align-items: flex-start; }
 }
