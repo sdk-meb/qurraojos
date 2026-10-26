@@ -7,6 +7,7 @@ export type ProductVariant = {
   id: string;
   label: LocalizedText;
   available: boolean;
+  kind?: "color" | "size";
 };
 export type Category = {
   id: string;
@@ -37,10 +38,12 @@ export type Product = {
 };
 
 export const categories: Category[] = [
-  { id: "birth-gifts", name: { ar: "هدايا العقيقة", fr: "Cadeaux de naissance", en: "Birth gifts", es: "Regalos de nacimiento" }, description: { ar: "هدايا وقطع مختارة لاستقبال المولود الجديد.", fr: "Des cadeaux choisis pour accueillir bébé.", en: "Thoughtful gifts to welcome a new baby.", es: "Regalos para dar la bienvenida al bebé." }, accent: "rose", icon: "🎁" },
-  { id: "child-rearing", name: { ar: "تربية الأطفال", fr: "Éducation", en: "Child rearing", es: "Crianza" }, description: { ar: "ألعاب وأدوات تساعد على التعلم والنمو.", fr: "Jeux et accessoires pour apprendre.", en: "Toys and tools for learning and growth.", es: "Juegos y herramientas para aprender." }, accent: "gold", icon: "🧸" },
-  { id: "children-clothing", name: { ar: "ملابس الأطفال", fr: "Vêtements enfants", en: "Children's clothing", es: "Ropa infantil" }, description: { ar: "ملابس ناعمة ومريحة للأشهر الأولى.", fr: "Des vêtements doux pour les premiers mois.", en: "Soft, comfortable clothes for little ones.", es: "Ropa suave y cómoda para los pequeños." }, accent: "sage", icon: "🧦" },
-  { id: "baby-supplies", name: { ar: "مستلزمات الرضع", fr: "Bébé et puériculture", en: "Baby supplies", es: "Bebé y puericultura" }, description: { ar: "احتياجات يومية للعناية والراحة.", fr: "Les essentiels du quotidien et du bien-être.", en: "Everyday essentials for baby care.", es: "Artículos esenciales para el cuidado diario." }, accent: "blue", icon: "🍼" },
+  { id: "diapering-potty", name: { ar: "الحفاضات والتدريب على استخدام المرحاض", fr: "Couches et propreté", en: "Diapering & Potty", es: "Pañales y orinal" }, description: { ar: "حفاضات ومستلزمات تغيير الطفل والتدريب على استخدام المرحاض.", fr: "Couches, accessoires de change et articles pour apprendre la propreté.", en: "Diapers, changing essentials, and potty-training supplies.", es: "Pañales, artículos para el cambio y productos para aprender a ir al baño." }, accent: "blue", icon: "🧷" },
+  { id: "feeding-nursing", name: { ar: "الرضاعة والتغذية", fr: "Alimentation et allaitement", en: "Feeding & Nursing", es: "Alimentación y lactancia" }, description: { ar: "مستلزمات الرضاعة الطبيعية والرضاعة بالزجاجة وإطعام الطفل.", fr: "Essentiels pour l’allaitement, le biberon et les repas de bébé.", en: "Breastfeeding, bottle-feeding, and baby-feeding essentials.", es: "Artículos esenciales para la lactancia, el biberón y la alimentación del bebé." }, accent: "gold", icon: "🍼" },
+  { id: "bath-skincare-health", name: { ar: "الاستحمام والعناية بالبشرة والصحة", fr: "Bain, soins de la peau et santé", en: "Bath, Skincare & Health", es: "Baño, cuidado de la piel y salud" }, description: { ar: "مستلزمات استحمام الطفل والعناية ببشرته وصحته اليومية.", fr: "Essentiels pour le bain, les soins de la peau et la santé quotidienne.", en: "Bath-time, skincare, and everyday health essentials.", es: "Artículos esenciales para el baño, el cuidado de la piel y la salud diaria." }, accent: "sage", icon: "🛁" },
+  { id: "clothing-footwear", name: { ar: "الملابس والأحذية", fr: "Vêtements et chaussures", en: "Clothing & Footwear", es: "Ropa y calzado" }, description: { ar: "ملابس وأحذية مريحة للأطفال والرضع.", fr: "Vêtements et chaussures confortables pour les bébés et les enfants.", en: "Comfortable clothing and footwear for babies and children.", es: "Ropa y calzado cómodos para bebés y niños." }, accent: "rose", icon: "🧦" },
+  { id: "nursery-sleep", name: { ar: "غرفة الطفل والنوم", fr: "Chambre de bébé et sommeil", en: "Nursery & Sleep", es: "Habitación infantil y sueño" }, description: { ar: "أسرّة الأطفال ومستلزمات الفراش ومراقبة الطفل ومنتجات النوم.", fr: "Lits bébé, literie, babyphones et essentiels pour le sommeil.", en: "Cribs, bedding, baby monitors, and sleep essentials.", es: "Cunas, ropa de cama, vigilabebés y artículos para dormir." }, accent: "blue", icon: "🛏️" },
+  { id: "gear-safety-toys", name: { ar: "معدات التنقل والسلامة والألعاب", fr: "Équipement, sécurité et jouets", en: "Gear, Safety & Toys", es: "Equipamiento, seguridad y juguetes" }, description: { ar: "عربات الأطفال ومقاعد السيارة ومستلزمات السلامة والألعاب.", fr: "Poussettes, sièges auto, articles de sécurité et jouets.", en: "Strollers, car seats, safety essentials, and toys.", es: "Cochecitos, sillas de coche, artículos de seguridad y juguetes." }, accent: "gold", icon: "🧸" },
 ];
 
 const text = (ar: string, fr: string, en: string, es: string): LocalizedText => ({ ar, fr, en, es });
@@ -49,12 +52,18 @@ const sizeVariants = [
   { id: "6-12m", label: text("٦–١٢ شهراً", "6–12 mois", "6–12 months", "6–12 meses"), available: true },
 ];
 const colors = [
-  { id: "cream", label: text("عاجي", "Écru", "Cream", "Crema"), available: true },
-  { id: "sage", label: text("أخضر هادئ", "Vert sauge", "Sage", "Verde salvia"), available: true },
+  { id: "cream", label: text("عاجي", "Écru", "Cream", "Crema"), available: true, kind: "color" as const },
+  { id: "sage", label: text("أخضر هادئ", "Vert sauge", "Sage", "Verde salvia"), available: true, kind: "color" as const },
 ];
+const demoCategoryMap: Record<string, string> = {
+  "birth-gifts": "nursery-sleep",
+  "child-rearing": "gear-safety-toys",
+  "children-clothing": "clothing-footwear",
+  "baby-supplies": "bath-skincare-health",
+};
 
-export const demoProducts: Product[] = [
-  { id: "demo-01", slug: "newborn-gift-set", categoryId: "birth-gifts", name: text("طقم هدية للمولود", "Coffret cadeau bébé", "Newborn gift set", "Set de regalo para bebé"), description: text("طقم تجريبي لطيف لاستقبال المولود. يُرجى استبدال الوصف والصورة قبل الإطلاق.", "Exemple de coffret de naissance. Remplacez le descriptif et la photo avant lancement.", "Demo newborn gift set. Replace this description and image before launch.", "Set de regalo de muestra. Sustituye descripción e imagen antes del lanzamiento."), priceMad: 180, availability: "in-stock", variants: colors },
+export const demoProducts: Product[] = ([
+  { id: "demo-01", slug: "newborn-gift-set", categoryId: "nursery-sleep", name: text("طقم هدية للمولود", "Coffret cadeau bébé", "Newborn gift set", "Set de regalo para bebé"), description: text("طقم تجريبي لطيف لاستقبال المولود. يُرجى استبدال الوصف والصورة قبل الإطلاق.", "Exemple de coffret de naissance. Remplacez le descriptif et la photo avant lancement.", "Demo newborn gift set. Replace this description and image before launch.", "Set de regalo de muestra. Sustituye descripción e imagen antes del lanzamiento."), priceMad: 180, availability: "in-stock", variants: colors },
   { id: "demo-02", slug: "soft-baby-blanket", categoryId: "birth-gifts", name: text("بطانية ناعمة", "Couverture douce", "Soft baby blanket", "Manta suave"), description: text("بطانية تجريبية ناعمة. تحقق من الخامة والمقاس قبل البيع.", "Couverture de démonstration. Vérifiez la matière et la taille.", "Sample blanket. Confirm material and dimensions before sale.", "Manta de muestra. Confirma material y medidas antes de vender."), priceMad: 120, availability: "in-stock", variants: colors },
   { id: "demo-03", slug: "welcome-baby-box", categoryId: "birth-gifts", name: text("علبة ترحيب بالمولود", "Boîte bienvenue bébé", "Welcome baby box", "Caja bienvenida bebé"), description: text("اقتراح تجريبي لهدية المولود الجديد.", "Suggestion de coffret cadeau de démonstration.", "Demo newborn gift box idea.", "Idea de caja de regalo de muestra."), priceMad: 250, availability: "in-stock", variants: [] },
   { id: "demo-04", slug: "wooden-shape-toy", categoryId: "child-rearing", name: text("لعبة أشكال خشبية", "Jeu de formes en bois", "Wooden shape toy", "Juego de formas de madera"), description: text("لعبة تعليمية تجريبية. راجعي شروط السلامة والعمر المناسب.", "Jouet éducatif de démonstration. Vérifiez sécurité et âge recommandé.", "Sample learning toy. Verify safety and age guidance.", "Juguete educativo de muestra. Verifica seguridad y edad recomendada."), priceMad: 85, availability: "in-stock", variants: [] },
@@ -66,7 +75,10 @@ export const demoProducts: Product[] = [
   { id: "demo-10", slug: "feeding-bottle", categoryId: "baby-supplies", name: text("قارورة رضاعة", "Biberon", "Feeding bottle", "Biberón"), description: text("مثال تجريبي. تحققي من السعة والخامة ومعايير السلامة.", "Exemple démo. Vérifiez capacité, matière et sécurité.", "Demo item. Confirm capacity, material and safety.", "Ejemplo de muestra. Confirma capacidad, material y seguridad."), priceMad: 35, availability: "in-stock", variants: [] },
   { id: "demo-11", slug: "changing-mat", categoryId: "baby-supplies", name: text("مفرش تغيير محمول", "Matelas à langer nomade", "Portable changing mat", "Cambiador portátil"), description: text("مفرش تجريبي للعناية اليومية.", "Tapis de démonstration pour le quotidien.", "Demo changing mat for everyday care.", "Cambiador de muestra para el día a día."), priceMad: 75, availability: "in-stock", variants: colors },
   { id: "demo-12", slug: "baby-care-organizer", categoryId: "baby-supplies", name: text("منظم مستلزمات الرضيع", "Organisateur bébé", "Baby care organizer", "Organizador para bebé"), description: text("مثال تجريبي — تحققي من المقاسات والمحتويات قبل الإطلاق.", "Exemple démo — vérifiez dimensions et contenu.", "Demo item — verify size and contents before launch.", "Ejemplo de muestra: verifica medidas y contenido."), priceMad: 145, availability: "in-stock", variants: [] },
-];
+ ] satisfies Product[]).map((product) => ({
+  ...product,
+  categoryId: demoCategoryMap[product.categoryId] ?? product.categoryId,
+}));
 
 export function hasSupabaseConfig() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
