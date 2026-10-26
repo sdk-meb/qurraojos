@@ -8,10 +8,12 @@ export type ProductCsvIssueReason =
   | "missingRequiredField"
   | "invalidPrice"
   | "invalidAvailability"
+  | "invalidCondition"
   | "invalidQuantity"
   | "invalidCategory"
   | "invalidUrl"
-  | "duplicate";
+  | "duplicate"
+  | "tooManyVariants";
 export type ProductCsvIssue = { line: number; reason: ProductCsvIssueReason };
 export type ProductCsvRecord = {
   slug: string;
@@ -20,16 +22,57 @@ export type ProductCsvRecord = {
   description: Record<Locale, string>;
   price_mad: number;
   available: boolean;
-  feed_item_id?: string;
+  variants: Array<{ id: string; label: Record<Locale, string>; available: boolean; kind: "color" }>;
+  feed_item_id?: string | null;
   brand?: string;
   condition?: string;
   product_url?: string;
   image_url?: string | null;
   image_urls?: string[];
+  google_product_category?: string;
+  fb_product_category?: string;
+  age_group?: string;
+  material?: string;
   regular_price_mad?: number | null;
   sale_price_mad?: number | null;
   quantity_to_sell_on_facebook?: number | null;
   feed_attributes?: Record<string, string>;
+};
+export type ProductColorCsvRecord = {
+  product_slug: string;
+  feed_item_id: string;
+  color: string;
+  color_key: string;
+  label: Record<Locale, string>;
+  available: boolean;
+  price_mad: number;
+  image_url: string | null;
+  image_urls: string[];
+  source_title: string;
+  source_description: string;
+  sort_order: number;
+};
+
+const categoryIds = new Set([
+  "diapering-potty",
+  "feeding-nursing",
+  "bath-skincare-health",
+  "clothing-footwear",
+  "nursery-sleep",
+  "gear-safety-toys",
+]);
+
+const colorTranslations: Record<string, { key: string; en: string; fr: string; es: string }> = {
+  "وردي": { key: "pink", en: "Pink", fr: "Rose", es: "Rosa" },
+  "رمادي": { key: "gray", en: "Gray", fr: "Gris", es: "Gris" },
+  "بيج": { key: "beige", en: "Beige", fr: "Beige", es: "Beige" },
+  "أبيض كريمي": { key: "cream", en: "Cream", fr: "Écru", es: "Crema" },
+  "ابيض كريمي": { key: "cream", en: "Cream", fr: "Écru", es: "Crema" },
+  "أبيض": { key: "white", en: "White", fr: "Blanc", es: "Blanco" },
+  "ابيض": { key: "white", en: "White", fr: "Blanc", es: "Blanco" },
+  "ازرق": { key: "blue", en: "Blue", fr: "Bleu", es: "Azul" },
+  "أزرق": { key: "blue", en: "Blue", fr: "Bleu", es: "Azul" },
+  "فضي": { key: "silver", en: "Silver", fr: "Argenté", es: "Plateado" },
 };
 
 function readCsv(text: string): CsvRow[] {
@@ -134,7 +177,61 @@ function slugify(value: string) {
   return `${readable || "product"}-${(hash >>> 0).toString(36)}`;
 }
 
-export function parseProductCsv(text: string, fallbackCategory: string) {
+function inferCategory(googleCategory: string, facebookCategory: string) {
+  const google = googleCategory.toLowerCase();
+  const facebook = facebookCategory.toLowerCase();
+  if (google.includes("diapering") || facebook.includes("diaper")) return "diapering-potty";
+  if (google.includes("feeding") || google.includes("nursing") || facebook.includes("feeding")) {
+    return "feeding-nursing";
+  }
+  if (google.includes("bathing") || google.includes("skincare") || google.includes("health") ||
+    facebook.includes("bath") || facebook.includes("health") || facebook.includes("towel")) {
+    return "bath-skincare-health";
+  }
+  if (google.includes("clothing") || google.includes("footwear") ||
+    facebook.includes("clothing") || facebook.includes("footwear") || facebook.includes("baby_hat")) {
+    return "clothing-footwear";
+  }
+  if (google.includes("blanket") || google.includes("bedding") || google.includes("nursery") ||
+    google.includes("crib") || google.includes("sleep") || facebook.includes("blanket") ||
+    facebook.includes("bedding")) {
+    return "nursery-sleep";
+  }
+  if (google.includes("stroller") || google.includes("car seat") || google.includes("toy") ||
+    google.includes("safety") || facebook.includes("toy") || facebook.includes("stroller")) {
+    return "gear-safety-toys";
+  }
+  return null;
+}
+
+function localizedColor(color: string): { key: string; label: Record<Locale, string> } {
+  const known = colorTranslations[color.trim().toLowerCase()];
+  let hash = 0x811c9dc5;
+  for (const character of color.trim().toLowerCase()) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);
+  }
+  const fallbackKey = `color-${(hash >>> 0).toString(36)}`;
+  return {
+    key: known?.key ?? fallbackKey,
+    label: {
+      ar: color.trim(),
+      en: known?.en ?? color.trim(),
+      fr: known?.fr ?? color.trim(),
+      es: known?.es ?? color.trim(),
+    },
+  };
+}
+
+function titleWithoutColor(title: string, color: string) {
+  if (!color.trim()) return title.trim();
+  const escaped = color.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return title
+    .replace(new RegExp(`(?:\\s*[-–—]\\s*|\\s+)${escaped}\\s*$`, "i"), "")
+    .replace(/[\s\-–—]+$/g, "")
+    .trim() || title.trim();
+}
+
+export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<string> = categoryIds) {
   const rows = readCsv(text);
   const headerIndex = rows.findIndex(({ values }) => {
     const headers = values.map(normalizeHeader);
@@ -149,20 +246,37 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
   const availabilityColumn = column("availability", "status");
   const priceColumn = column("price");
   const salePriceColumn = column("sale_price");
-  const categoryColumn = column("category", "category_id");
+  const categoryColumn = column("category", "category_id", "store_category");
+  const googleCategoryColumn = column("google_product_category");
+  const facebookCategoryColumn = column("fb_product_category", "facebook_product_category");
   const itemIdColumn = column("id", "content_id", "sku");
   const conditionColumn = column("condition");
   const brandColumn = column("brand");
   const productUrlColumn = column("link", "product_url");
   const imageUrlColumn = column("image_link", "image_url");
-  const additionalImageColumn = column("additional_image_link", "additional_image_url");
   const imageUrlsColumn = column("image_urls");
   const quantityColumn = column("quantity_to_sell_on_facebook", "quantity");
+  const colorColumn = column("color");
   const dataRows = rows.slice(headerIndex + 1);
-  const records: ProductCsvRecord[] = [];
   const issues: ProductCsvIssue[] = [];
-  const seenSlugs = new Set<string>();
-  const categoryIds = new Set(["birth-gifts", "child-rearing", "children-clothing", "baby-supplies"]);
+  const parsedRows: Array<{
+    line: number;
+    product: ProductCsvRecord;
+    productTitle: string;
+    sourceTitle: string;
+    sourceDescription: string;
+    sourceId: string;
+    color?: string;
+    colorKey?: string;
+    colorLabel?: Record<Locale, string>;
+    colorPrice?: number;
+    colorAvailable?: boolean;
+    imageUrls: string[];
+  }> = [];
+  const additionalImageColumns = headers.flatMap((header, index) =>
+    header === "additional_image_link" || /^additional_image_link\[\d+\]$/.test(header) ||
+    header === "additional_image_url" ? [index] : [],
+  );
 
   for (const sourceRow of dataRows) {
     let values = sourceRow.values;
@@ -185,8 +299,6 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
     const requiredColumns = [
       descriptionColumn,
       availabilityColumn,
-      conditionColumn,
-      brandColumn,
       productUrlColumn,
       imageUrlColumn,
       itemIdColumn,
@@ -202,14 +314,9 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
       ? parseMadPrice(values[salePriceColumn])
       : null;
     const priceMad = parseMadPrice(rawPrice);
-    if (priceMad === null) {
-      issues.push({ line: sourceRow.line, reason: "invalidPrice" });
-      continue;
-    }
-    if (
+    if (priceMad === null ||
       (values[priceColumn]?.trim() && regularPriceMad === null) ||
-      (salePriceColumn >= 0 && values[salePriceColumn].trim() && salePriceMad === null)
-    ) {
+      (salePriceColumn >= 0 && values[salePriceColumn].trim() && salePriceMad === null)) {
       issues.push({ line: sourceRow.line, reason: "invalidPrice" });
       continue;
     }
@@ -221,11 +328,18 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
       issues.push({ line: sourceRow.line, reason: "invalidAvailability" });
       continue;
     }
+    const condition = conditionColumn >= 0 ? values[conditionColumn].trim().toLowerCase() : "";
+    if (condition && condition !== "new" && condition !== "used") {
+      issues.push({ line: sourceRow.line, reason: "invalidCondition" });
+      continue;
+    }
 
+    const googleCategory = googleCategoryColumn >= 0 ? values[googleCategoryColumn].trim() : "";
+    const facebookCategory = facebookCategoryColumn >= 0 ? values[facebookCategoryColumn].trim() : "";
     const category = categoryColumn >= 0 && values[categoryColumn].trim()
       ? values[categoryColumn].trim()
-      : fallbackCategory;
-    if (!categoryIds.has(category)) {
+      : inferCategory(googleCategory, facebookCategory);
+    if (!category || !validCategoryIds.has(category)) {
       issues.push({ line: sourceRow.line, reason: "invalidCategory" });
       continue;
     }
@@ -233,11 +347,12 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
     const productUrl = productUrlColumn >= 0 && values[productUrlColumn].trim()
       ? parseUrl(values[productUrlColumn])
       : null;
-    const imageUrls = [
+    const rawImageUrls = [
       ...(imageUrlColumn >= 0 ? values[imageUrlColumn].split(/[;\r\n]+/) : []),
-      ...(additionalImageColumn >= 0 ? values[additionalImageColumn].split(/[;\r\n]+/) : []),
+      ...additionalImageColumns.flatMap((index) => values[index].split(/[;\r\n]+/)),
       ...(imageUrlsColumn >= 0 ? values[imageUrlsColumn].split(/[;\r\n]+/) : []),
-    ].map((url) => url.trim()).filter(Boolean).map(parseUrl);
+    ].map((url) => url.trim()).filter(Boolean);
+    const imageUrls = rawImageUrls.map(parseUrl);
     if (
       (productUrlColumn >= 0 && values[productUrlColumn].trim() && !productUrl) ||
       imageUrls.some((url) => url === null)
@@ -245,20 +360,9 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
       issues.push({ line: sourceRow.line, reason: "invalidUrl" });
       continue;
     }
-    const uniqueImageUrls = Array.from(new Set(imageUrls
-      .filter((url): url is string => url !== null)
-      .map(normalizeImageUrl)));
-
-    const feedAttributes: Record<string, string> = {};
-    const mappedColumns = new Set([
-      titleColumn, descriptionColumn, availabilityColumn, priceColumn, salePriceColumn,
-      categoryColumn, itemIdColumn, conditionColumn, brandColumn, productUrlColumn,
-      imageUrlColumn, additionalImageColumn, imageUrlsColumn, quantityColumn,
-    ].filter((index) => index >= 0));
-    headers.forEach((header, index) => {
-      const value = values[index]?.trim() ?? "";
-      if (value && !mappedColumns.has(index)) feedAttributes[header] = value;
-    });
+    const uniqueImageUrls = Array.from(new Set(
+      imageUrls.filter((url): url is string => url !== null).map(normalizeImageUrl),
+    ));
 
     const quantity = quantityColumn >= 0 && values[quantityColumn].trim()
       ? Number(toAsciiDigits(values[quantityColumn].trim()))
@@ -268,37 +372,141 @@ export function parseProductCsv(text: string, fallbackCategory: string) {
       continue;
     }
 
-    const slugColumn = column("slug");
-    const suppliedSlug = slugColumn >= 0 ? values[slugColumn].trim() : "";
-    const slug = suppliedSlug || slugify(title);
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || seenSlugs.has(slug)) {
-      issues.push({ line: sourceRow.line, reason: "duplicate" });
+    const sourceId = itemIdColumn >= 0 ? values[itemIdColumn].trim() : "";
+    if (!sourceId) {
+      issues.push({ line: sourceRow.line, reason: "missingRequiredField" });
       continue;
     }
-    seenSlugs.add(slug);
-
-    records.push({
+    const color = colorColumn >= 0 ? values[colorColumn].trim() : "";
+    const productTitle = titleWithoutColor(title, color);
+    const slug = slugify(productTitle);
+    const mappedColumns = new Set([
+      titleColumn, descriptionColumn, availabilityColumn, priceColumn, salePriceColumn,
+      categoryColumn, googleCategoryColumn, facebookCategoryColumn, itemIdColumn,
+      conditionColumn, brandColumn, productUrlColumn, imageUrlColumn,
+      imageUrlsColumn, quantityColumn, colorColumn, ...additionalImageColumns,
+    ].filter((index) => index >= 0));
+    const feedAttributes: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      const value = values[index]?.trim() ?? "";
+      if (value && !mappedColumns.has(index)) feedAttributes[header] = value;
+    });
+    const product: ProductCsvRecord = {
       slug,
       category_id: category,
-      name: { ar: title, fr: "", en: "", es: "" },
+      name: { ar: productTitle, fr: "", en: "", es: "" },
       description: { ar: descriptionColumn >= 0 ? values[descriptionColumn].trim() : "", fr: "", en: "", es: "" },
       price_mad: priceMad,
       available: availability === "in stock",
-      ...(itemIdColumn >= 0 && values[itemIdColumn].trim() ? { feed_item_id: values[itemIdColumn].trim() } : {}),
+      variants: [],
+      ...(color ? {} : { feed_item_id: sourceId }),
       ...(brandColumn >= 0 && values[brandColumn].trim() ? { brand: values[brandColumn].trim() } : {}),
-      ...(conditionColumn >= 0 && values[conditionColumn].trim() ? { condition: values[conditionColumn].trim() } : {}),
+      ...(condition ? { condition } : {}),
       ...(productUrl ? { product_url: productUrl } : {}),
       ...(uniqueImageUrls.length
         ? { image_url: uniqueImageUrls[0], image_urls: uniqueImageUrls }
-        : imageUrlColumn >= 0 || additionalImageColumn >= 0 || imageUrlsColumn >= 0
+        : imageUrlColumn >= 0 || additionalImageColumns.length > 0 || imageUrlsColumn >= 0
           ? { image_url: null, image_urls: [] }
           : {}),
+      ...(googleCategory ? { google_product_category: googleCategory } : {}),
+      ...(facebookCategory ? { fb_product_category: facebookCategory } : {}),
+      ...(feedAttributes.age_group ? { age_group: feedAttributes.age_group } : {}),
+      ...(feedAttributes.material ? { material: feedAttributes.material } : {}),
       ...(regularPriceMad !== null ? { regular_price_mad: regularPriceMad } : {}),
       ...(salePriceMad !== null ? { sale_price_mad: salePriceMad } : {}),
       ...(quantity !== null ? { quantity_to_sell_on_facebook: quantity } : {}),
       ...(Object.keys(feedAttributes).length ? { feed_attributes: feedAttributes } : {}),
+    };
+    const colorInfo = color ? localizedColor(color) : null;
+    parsedRows.push({
+      line: sourceRow.line,
+      product,
+      productTitle,
+      sourceTitle: title,
+      sourceDescription: descriptionColumn >= 0 ? values[descriptionColumn].trim() : "",
+      sourceId,
+      ...(colorInfo ? { color, colorKey: colorInfo.key, colorLabel: colorInfo.label } : {}),
+      ...(color ? { colorPrice: priceMad, colorAvailable: availability === "in stock" } : {}),
+      imageUrls: uniqueImageUrls,
     });
   }
 
-  return { records, issues };
+  const groups = new Map<string, typeof parsedRows>();
+  for (const row of parsedRows) {
+    const groupKey = `${row.product.category_id}:${row.product.slug}`;
+    groups.set(groupKey, [...(groups.get(groupKey) ?? []), row]);
+  }
+
+  const records: ProductCsvRecord[] = [];
+  const colorOptions: ProductColorCsvRecord[] = [];
+  const seenFeedIds = new Set<string>();
+  for (const group of Array.from(groups.values())) {
+    const duplicateIdRows = group.filter((row) => {
+      if (seenFeedIds.has(row.sourceId)) return true;
+      seenFeedIds.add(row.sourceId);
+      return false;
+    });
+    duplicateIdRows.forEach(({ line }) => issues.push({ line, reason: "duplicate" }));
+    const validRows = group.filter((row) => !duplicateIdRows.includes(row));
+    if (!validRows.length) continue;
+    const coloredRows = validRows.filter((row) => row.color && row.colorKey && row.colorLabel);
+    if (coloredRows.length > 8) {
+      validRows.forEach(({ line }) => issues.push({ line, reason: "tooManyVariants" }));
+      continue;
+    }
+
+    const first = validRows[0];
+    const mergedImageUrls = Array.from(new Set(validRows.flatMap((row) => row.imageUrls)));
+    const uniqueColoredRows = coloredRows.filter((row, index) => {
+      const isDuplicate = coloredRows.findIndex((candidate) => candidate.colorKey === row.colorKey) !== index;
+      if (isDuplicate) issues.push({ line: row.line, reason: "duplicate" });
+      return !isDuplicate;
+    });
+    const mergedVariants = uniqueColoredRows.map((row) => ({
+      id: row.colorKey!,
+      label: row.colorLabel!,
+      available: row.colorAvailable ?? false,
+      kind: "color" as const,
+    }));
+    const product: ProductCsvRecord = {
+      ...first.product,
+      name: { ...first.product.name },
+      description: {
+        ...first.product.description,
+        ar: first.color
+          ? titleWithoutColor(first.sourceDescription, first.color)
+          : first.sourceDescription,
+      },
+      available: coloredRows.length
+        ? coloredRows.some((row) => row.colorAvailable)
+        : first.product.available,
+      ...(uniqueColoredRows.length
+        ? {
+            feed_item_id: null,
+            variants: mergedVariants,
+            image_url: mergedImageUrls[0] ?? null,
+            image_urls: mergedImageUrls,
+          }
+        : {}),
+    };
+    for (const row of uniqueColoredRows) {
+      colorOptions.push({
+        product_slug: product.slug,
+        feed_item_id: row.sourceId,
+        color: row.color!,
+        color_key: row.colorKey!,
+        label: row.colorLabel!,
+        available: row.colorAvailable ?? false,
+        price_mad: row.colorPrice ?? product.price_mad,
+        image_url: row.imageUrls[0] ?? null,
+        image_urls: row.imageUrls,
+        source_title: row.sourceTitle,
+        source_description: row.sourceDescription,
+        sort_order: colorOptions.filter((option) => option.product_slug === product.slug).length,
+      });
+    }
+    records.push(product);
+  }
+
+  return { records, colorOptions, issues };
 }
