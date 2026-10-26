@@ -2,9 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { getSupabase, productFromRow, type Product, type ProductVariant } from "@/lib/catalog";
-import { getCopy, type Locale } from "@/lib/locale";
-import { parseProductCsv, type ProductCsvIssue } from "@/lib/product-csv";
+import { categories, getSupabase, productFromRow, type Product, type ProductVariant } from "@/lib/catalog";
+import { getCopy, localized, type Locale } from "@/lib/locale";
+import type { ProductCsvIssue } from "@/lib/product-csv";
 import { normalizeImageUrl } from "@/lib/image-url";
 import { ProductImage } from "@/components/product-image";
 
@@ -38,7 +38,7 @@ function driveImageUrls(folder: DriveFolderNode): string[] {
 }
 
 const blankProduct = (): Partial<Product> => ({
-  id: "", slug: "", categoryId: "birth-gifts",
+  id: "", slug: "", categoryId: "",
   name: { ar: "", fr: "", en: "", es: "" },
   description: { ar: "", fr: "", en: "", es: "" },
   priceMad: 0, availability: "in-stock", imageUrl: "", imageUrls: [],
@@ -56,7 +56,6 @@ export function AdminDashboard() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [language, setLanguage] = useState<Locale>("ar");
-  const [importCategory, setImportCategory] = useState("baby-supplies");
   const [feedAttributesText, setFeedAttributesText] = useState("{}");
   const [driveFolderLink, setDriveFolderLink] = useState("");
   const [driveTree, setDriveTree] = useState<DriveFolderNode | null>(null);
@@ -112,7 +111,6 @@ export function AdminDashboard() {
     setBusy(true);
     setStatus("");
     try {
-      const { records, issues } = parseProductCsv(await file.text(), importCategory);
       const describeIssues = (rows: ProductCsvIssue[]) => rows.map(({ line, reason }) => {
         const reasonLabel = {
           malformed: labels.csvRowMalformed,
@@ -120,54 +118,57 @@ export function AdminDashboard() {
           missingRequiredField: labels.csvMissingRequiredField,
           invalidPrice: labels.csvInvalidPrice,
           invalidAvailability: labels.csvInvalidAvailability,
+          invalidCondition: labels.csvInvalidCondition,
           invalidQuantity: labels.csvInvalidQuantity,
           invalidCategory: labels.csvInvalidCategory,
           invalidUrl: labels.csvInvalidUrl,
           duplicate: labels.csvDuplicate,
+          tooManyVariants: labels.csvTooManyVariants,
         }[reason];
         return `${labels.csvRow} ${line}: ${reasonLabel}`;
       }).join("; ");
-      if (!records.length) {
-        const issueSummary = describeIssues(issues);
-        setStatus(issueSummary ? `${labels.csvNoProducts} ${issueSummary}` : labels.csvNoProducts);
-        return;
-      }
-
-      const { data: existingRows, error: lookupError } = await supabase!
-        .from("products")
-        .select("*")
-        .in("slug", records.map((record) => record.slug));
-      if (lookupError) {
-        setStatus(`${labels.csvImportError} ${lookupError.message}`);
-        return;
-      }
-      const existingBySlug = new Map((existingRows ?? []).map((row) => [row.slug, row]));
-      const recordsToUpsert = records.map((record) => {
-        const existing = existingBySlug.get(record.slug);
-        return existing
-          ? {
-              ...existing,
-              ...record,
-              id: existing.id,
-              name: { ...existing.name, ...record.name },
-              description: { ...existing.description, ...record.description },
-              feed_attributes: { ...existing.feed_attributes, ...record.feed_attributes },
-            }
-          : record;
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/admin/import-products", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
       });
-      const { error } = await supabase!.from("products").upsert(recordsToUpsert, { onConflict: "slug" });
-      if (error) {
-        setStatus(`${labels.csvImportError} ${error.message}`);
+      const responseText = await response.text();
+      type ImportResponse = {
+        error?: string;
+        imported?: number;
+        colorsImported?: number;
+        issues?: ProductCsvIssue[];
+      };
+      let result: ImportResponse;
+      try {
+        const payload: unknown = responseText ? JSON.parse(responseText) : null;
+        result = payload && typeof payload === "object" && !Array.isArray(payload)
+          ? payload as ImportResponse
+          : { error: `The server returned an empty or invalid response (HTTP ${response.status}).` };
+      } catch {
+        result = {
+          error: `The server returned an invalid response (HTTP ${response.status}). Check the server logs and database schema.`,
+        };
+      }
+      if (!response.ok) {
+        const issueSummary = result.issues?.length
+          ? ` ${describeIssues(result.issues)}`
+          : "";
+        setStatus(`${labels.csvImportError} ${result.error ?? labels.csvUnknownError}${issueSummary}`);
         return;
       }
 
       const { data, error: refreshError } = await supabase!.from("products").select("*").order("created_at", { ascending: false });
       if (refreshError) {
-        setStatus(`${labels.csvImportSuccess} ${records.length}. ${labels.adminLoadError}`);
+        setStatus(`${labels.csvImportSuccess} ${result.imported ?? 0}. ${labels.adminLoadError}`);
       } else {
         setProducts((data ?? []).map((row) => productFromRow(row)));
+        const issues = result.issues ?? [];
         const issueSummary = describeIssues(issues);
-        setStatus(`${labels.csvImportSuccess} ${records.length}.${issueSummary ? ` ${labels.csvSkipped} ${issues.length}: ${issueSummary}` : ""}`);
+        const colorSummary = result.colorsImported ? ` ${labels.csvColorsImported} ${result.colorsImported}.` : "";
+        setStatus(`${labels.csvImportSuccess} ${result.imported ?? 0}.${colorSummary}${issueSummary ? ` ${labels.csvSkipped} ${issues.length}: ${issueSummary}` : ""}`);
       }
     } catch (error) {
       setStatus(`${labels.csvImportError} ${error instanceof Error ? error.message : labels.csvUnknownError}`);
@@ -342,8 +343,7 @@ export function AdminDashboard() {
           <>
             <div className="admin-toolbar"><p>{session.user.email}</p><button className="button button-light" onClick={() => void supabase.auth.signOut()}>{labels.signOut}</button></div>
             <section className="csv-import" aria-label={labels.csvUpload}>
-              <label className="field"><span>{labels.csvCategory}</span><select value={importCategory} onChange={(event) => setImportCategory(event.target.value)} disabled={busy}><option value="birth-gifts">{labels.categoryNames[0]}</option><option value="child-rearing">{labels.categoryNames[1]}</option><option value="children-clothing">{labels.categoryNames[2]}</option><option value="baby-supplies">{labels.categoryNames[3]}</option></select></label>
-              <label className="field"><span>{labels.csvUpload}</span><input type="file" accept=".csv,text/csv" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importProductsCsv(file); }} /></label>
+                      <label className="field"><span>{labels.csvUpload}</span><input type="file" accept=".csv,text/csv" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importProductsCsv(file); }} /></label>
               <p>{labels.csvHint}</p>
             </section>
             <form className="admin-editor" onSubmit={saveProduct}>
@@ -351,7 +351,7 @@ export function AdminDashboard() {
               <div className="editor-grid">
                 <label className="field"><span>{labels.productName}</span><input required value={editing.name?.ar ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.productSlug}</span><input required value={editing.slug ?? ""} onChange={(event) => setEditing({ ...editing, slug: event.target.value })} /></label>
-                <label className="field"><span>{labels.category}</span><select value={editing.categoryId} onChange={(event) => setEditing({ ...editing, categoryId: event.target.value })}>{["birth-gifts", "child-rearing", "children-clothing", "baby-supplies"].map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+                <label className="field"><span>{labels.category}</span><select required value={editing.categoryId ?? ""} onChange={(event) => setEditing({ ...editing, categoryId: event.target.value })}><option value="" disabled>{labels.csvCategory}</option>{categories.map((category) => <option key={category.id} value={category.id}>{localized(category.name, language)}</option>)}</select></label>
                 <label className="field"><span>{labels.productPrice}</span><input type="number" min="10" max="300" step="1" required value={editing.priceMad ?? 0} onChange={(event) => setEditing({ ...editing, priceMad: Number(event.target.value) })} /></label>
                 <label className="field"><span>{labels.csvItemId}</span><input value={editing.feedItemId ?? ""} onChange={(event) => setEditing({ ...editing, feedItemId: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvBrand}</span><input value={editing.brand ?? ""} onChange={(event) => setEditing({ ...editing, brand: event.target.value })} /></label>
