@@ -1,4 +1,4 @@
-deploy_staging_to_production:
+deploy_to_production:
   image: node:22
   stage: deploy
   resource_group: vercel-production
@@ -32,7 +32,7 @@ deploy_staging_to_production:
     - npm install -g vercel@latest
     
     # Deploy to Vercel
-    - vercel whoami --token="$VERCEL_TOKEN
+    - vercel whoami --token="$VERCEL_TOKEN"
     - vercel pull --yes --environment=production --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
     - vercel build --prod --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
     - vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" 
@@ -44,7 +44,7 @@ deploy_staging_to_production:
     name: production
     url: https://qurraojos.vercel.app
   rules:
-    - if: '$CI_COMMIT_BRANCH == "staging"'
+    - if: '$CI_COMMIT_BRANCH == "dev"'
       changes:
         - src/*
         - src/**/*

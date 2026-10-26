@@ -42,9 +42,9 @@ Without Supabase, local development uses a visibly labeled demo catalogue. It co
 
 ## GitLab CI to Vercel
 
-The GitLab pipeline deploys only commits on the protected `staging` branch, and only when application, database, or build configuration files change. Changes limited to `.gitignore`, `Public/` or `public/`, and `docs/` do not trigger a deployment. The staging deployment uses Vercel's production environment and the project's configured production domains; GitLab displays `https://qurraojos.vercel.app` as the production environment link.
+While GitLab CI/Vercel authentication is being verified, the pipeline deploys commits on the protected `dev` branch to Vercel's production environment, and only when application, database, or build configuration files change. Once CI is working, change the branch rule back to `staging` and protect that branch so production deployments come from `staging`. Changes limited to `.gitignore`, `Public/` or `public/`, and `docs/` do not trigger a deployment. GitLab displays `https://qurraojos.vercel.app` as the production environment link.
 
-Add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as masked and protected GitLab CI/CD variables, and protect the `staging` branch so these credentials are available to its pipeline. For GitLab CI to be the only deployment path, disable or disconnect Vercel's Git auto-deploy integration for this project; otherwise Vercel may still create deployments directly from other branches. GitLab automatically cancels interruptible, superseded pipelines, but deployments already completed remain in Vercel's deployment history and must be removed from the Vercel dashboard if desired.
+Add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` as masked and protected GitLab CI/CD variables, and protect `dev` while it is used for deployment so these credentials are available to its pipeline. For GitLab CI to be the only deployment path, disable or disconnect Vercel's Git auto-deploy integration for this project; otherwise Vercel may still create deployments directly from other branches. GitLab automatically cancels interruptible, superseded pipelines, but deployments already completed remain in Vercel's deployment history and must be removed from the Vercel dashboard if desired.
 
 ## Commands
 
