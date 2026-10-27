@@ -30,13 +30,6 @@ type DriveFolderNode = {
   folders: DriveFolderNode[];
 };
 
-function driveImageUrls(folder: DriveFolderNode): string[] {
-  return [
-    ...folder.images.map(({ url }) => normalizeImageUrl(url)),
-    ...folder.folders.flatMap(driveImageUrls),
-  ];
-}
-
 const blankProduct = (): Partial<Product> => ({
   id: "", slug: "", categoryId: "",
   name: { ar: "", fr: "", en: "", es: "" },
@@ -59,7 +52,8 @@ export function AdminDashboard() {
   const [feedAttributesText, setFeedAttributesText] = useState("{}");
   const [driveFolderLink, setDriveFolderLink] = useState("");
   const [driveTree, setDriveTree] = useState<DriveFolderNode | null>(null);
-  const [driveAddedImageUrls, setDriveAddedImageUrls] = useState<string[]>([]);
+  const [drivePath, setDrivePath] = useState<DriveFolderNode[]>([]);
+  const [manualImageUrl, setManualImageUrl] = useState("");
   const labels = getCopy(language);
   const supabase = useMemo(() => getSupabase(), []);
 
@@ -95,6 +89,37 @@ export function AdminDashboard() {
     const { error } = await supabase!.auth.signInWithPassword({ email, password });
     setStatus(error?.message ?? "");
     setBusy(false);
+  }
+
+  function addProductImageUrl(url: string) {
+    const normalizedUrl = normalizeImageUrl(url);
+    setEditing((current) => {
+      const currentUrls = current.imageUrls?.length
+        ? current.imageUrls
+        : current.imageUrl ? [current.imageUrl] : [];
+      const imageUrls = Array.from(new Set([...currentUrls.map(normalizeImageUrl), normalizedUrl]));
+      return { ...current, imageUrl: imageUrls[0] ?? null, imageUrls };
+    });
+  }
+
+  function replaceProductImageUrls(imageUrls: string[]) {
+    const normalizedUrls = Array.from(new Set(imageUrls.map(normalizeImageUrl).filter(Boolean)));
+    setEditing((current) => ({
+      ...current,
+      imageUrl: normalizedUrls[0] ?? null,
+      imageUrls: normalizedUrls,
+    }));
+  }
+
+  function addManualImage() {
+    const imageUrl = normalizeImageUrl(manualImageUrl);
+    if (!isHttpUrl(imageUrl)) {
+      setStatus(labels.invalidImageUrl);
+      return;
+    }
+    addProductImageUrl(imageUrl);
+    setManualImageUrl("");
+    setStatus("");
   }
 
   async function importProductsCsv(file?: File) {
@@ -244,14 +269,20 @@ export function AdminDashboard() {
       setFeedAttributesText("{}");
       setDriveFolderLink("");
       setDriveTree(null);
-      setDriveAddedImageUrls([]);
+      setDrivePath([]);
+      setManualImageUrl("");
       const { data } = await supabase!.from("products").select("*").order("created_at", { ascending: false });
       if (data) setProducts(data.map((row) => productFromRow(row)));
     }
     setBusy(false);
   }
 
-  async function browseDriveFolder(folderLink?: string, folderId?: string, resourceKey?: string) {
+  async function browseDriveFolder(
+    folderLink?: string,
+    folderId?: string,
+    resourceKey?: string,
+    ancestors: DriveFolderNode[] = [],
+  ) {
     if (!session || session.user.app_metadata?.store_owner !== true) {
       setStatus(labels.adminDenied);
       return;
@@ -274,16 +305,8 @@ export function AdminDashboard() {
       }
 
       setDriveTree(result.folder);
-      const imageUrls = driveImageUrls(result.folder);
-      setDriveAddedImageUrls(imageUrls);
-      setEditing((current) => {
-        const existingUrls = current.imageUrls ?? (current.imageUrl ? [current.imageUrl] : []);
-        const previousDriveUrls = new Set(driveAddedImageUrls);
-        const retainedUrls = existingUrls.filter((url) => !previousDriveUrls.has(url));
-        const mergedUrls = Array.from(new Set([...retainedUrls, ...imageUrls]));
-        return { ...current, imageUrl: mergedUrls[0] ?? null, imageUrls: mergedUrls };
-      });
-      setStatus(imageUrls.length ? `${labels.driveImagesAdded} ${imageUrls.length}` : labels.driveNoImages);
+      setDrivePath([...ancestors, result.folder]);
+      setStatus("");
     } catch (error) {
       setStatus(`${labels.driveLoadError} ${error instanceof Error ? error.message : labels.csvUnknownError}`);
     } finally {
@@ -298,18 +321,21 @@ export function AdminDashboard() {
       return;
     }
     setBusy(true);
-    const path = `${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
-    const { error } = await supabase!.storage.from("product-images").upload(path, file, { upsert: false, contentType: file.type });
-    if (error) setStatus(`تعذر رفع الصورة: ${error.message}`);
-    else {
+    try {
+      const path = `${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+      const { error } = await supabase!.storage.from("product-images").upload(path, file, { upsert: false, contentType: file.type });
+      if (error) {
+        setStatus(`تعذر رفع الصورة: ${error.message}`);
+        return;
+      }
       const { data } = supabase!.storage.from("product-images").getPublicUrl(path);
-      setEditing((current) => {
-        const imageUrls = Array.from(new Set([...(current.imageUrls ?? (current.imageUrl ? [current.imageUrl] : [])), data.publicUrl]));
-        return { ...current, imageUrl: imageUrls[0], imageUrls };
-      });
+      addProductImageUrl(data.publicUrl);
       setStatus("");
+    } catch (error) {
+      setStatus(`تعذر رفع الصورة: ${error instanceof Error ? error.message : labels.csvUnknownError}`);
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function deleteProduct(id: string) {
@@ -328,12 +354,24 @@ export function AdminDashboard() {
     }));
   }
 
+  function editProductImages(product: Product, openManager = false) {
+    setEditing(product);
+    setFeedAttributesText(JSON.stringify(product.feedAttributes ?? {}, null, 2));
+    setDriveFolderLink("");
+    setDriveTree(null);
+    setDrivePath([]);
+    setManualImageUrl("");
+    if (openManager) {
+      document.getElementById("product-file-manager")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
   const isOwner = session?.user.app_metadata?.store_owner === true;
   const editingImageUrls = (editing.imageUrls?.length
     ? editing.imageUrls
     : editing.imageUrl ? [editing.imageUrl] : []).map(normalizeImageUrl);
   const isErrorStatus = status.includes("تعذر") || status.includes("ليس مخولاً") || status.includes(labels.driveLoadError) ||
-    [labels.csvInvalidFile, labels.csvImportError, labels.csvNoProducts, labels.csvAttributesInvalid].some((message) => status.includes(message));
+    [labels.csvInvalidFile, labels.csvImportError, labels.csvNoProducts, labels.csvAttributesInvalid, labels.invalidImageUrl].some((message) => status.includes(message));
   return (
     <main className="admin-page">
       <div className="admin-panel">
@@ -347,7 +385,7 @@ export function AdminDashboard() {
               <p>{labels.csvHint}</p>
             </section>
             <form className="admin-editor" onSubmit={saveProduct}>
-              <div className="editor-heading"><h2>{editing.id ? labels.edit : labels.newProduct}</h2><button className="button button-light" type="button" onClick={() => { setEditing(blankProduct()); setFeedAttributesText("{}"); setDriveFolderLink(""); setDriveTree(null); setDriveAddedImageUrls([]); }}>{labels.newProduct} +</button></div>
+              <div className="editor-heading"><h2>{editing.id ? labels.edit : labels.newProduct}</h2><button className="button button-light" type="button" onClick={() => { setEditing(blankProduct()); setFeedAttributesText("{}"); setDriveFolderLink(""); setDriveTree(null); setDrivePath([]); setManualImageUrl(""); }}>{labels.newProduct} +</button></div>
               <div className="editor-grid">
                 <label className="field"><span>{labels.productName}</span><input required value={editing.name?.ar ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.productSlug}</span><input required value={editing.slug ?? ""} onChange={(event) => setEditing({ ...editing, slug: event.target.value })} /></label>
@@ -362,32 +400,77 @@ export function AdminDashboard() {
                 <label className="field"><span>{labels.csvQuantity}</span><input type="number" min="1" step="1" value={editing.quantityToSell ?? ""} onChange={(event) => setEditing({ ...editing, quantityToSell: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field field-full"><span>{labels.description}</span><textarea rows={3} value={editing.description?.ar ?? ""} onChange={(event) => setEditing({ ...editing, description: { ...blankProduct().description!, ...editing.description, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.status}</span><select value={editing.availability} onChange={(event) => setEditing({ ...editing, availability: event.target.value as Product["availability"] })}><option value="in-stock">{labels.inStock}</option><option value="out-of-stock">{labels.outOfStock}</option></select></label>
-                <label className="field"><span>{labels.image}</span><input type="file" accept="image/*" disabled={busy} onChange={(event) => { void uploadImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
-                {editingImageUrls.length > 0 && <div className="product-image-previews field-full">{editingImageUrls.map((imageUrl) => <div className="image-preview" key={imageUrl}><ProductImage sources={[imageUrl]} alt={labels.image} sizes="90px" fallback="♡" /></div>)}</div>}
-                <section className="drive-folder-picker field-full" aria-label={labels.driveFolderLink}>
-                  <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label>
-                  <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => void browseDriveFolder(driveFolderLink.trim())}>{labels.driveBrowse}</button>
-                  <p>{labels.driveFolderHelp}</p>
-                  {driveTree && <div className="drive-folder-tree" aria-live="polite">
-                    <strong>{driveTree.name} · {driveTree.images.length} {labels.driveImageCount}</strong>
-                    {driveTree.folders.length > 0 && <ul>{driveTree.folders.map((folder) => (
-                      <li key={folder.id}>
-                        <button className="text-button" type="button" disabled={busy} onClick={() => void browseDriveFolder(undefined, folder.id, folder.resourceKey)}>
-                          {folder.name} · {folder.images.length} {labels.driveImageCount}
-                        </button>
-                        {folder.folders.length > 0 && <ul>{folder.folders.map((nestedFolder) => (
-                          <li key={nestedFolder.id}>
-                            <button className="text-button" type="button" disabled={busy} onClick={() => void browseDriveFolder(undefined, nestedFolder.id, nestedFolder.resourceKey)}>{nestedFolder.name}</button>
-                          </li>
-                        ))}</ul>}
-                      </li>
-                    ))}</ul>}
-                  </div>}
+                <section id="product-file-manager" className="product-file-manager field-full" aria-label={labels.imageManager}>
+                  <div className="file-manager-heading">
+                    <div><h3>{labels.imageManager}</h3><p>{labels.imageManagerHelp}</p></div>
+                  </div>
+                  <div className="file-manager-grid">
+                    <section className="drive-browser" aria-label={labels.driveContents}>
+                      <div className="drive-folder-picker">
+                        <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label>
+                        <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => void browseDriveFolder(driveFolderLink.trim())}>{labels.driveBrowse}</button>
+                      </div>
+                      {drivePath.length > 0 && <nav className="drive-breadcrumbs" aria-label={labels.driveContents}>
+                        {drivePath.map((folder, index) => <span key={folder.id}>
+                          {index > 0 && <span aria-hidden="true"> / </span>}
+                          <button className="text-button" type="button" disabled={busy} onClick={() => void browseDriveFolder(undefined, folder.id, folder.resourceKey, drivePath.slice(0, index))}>{folder.name}</button>
+                        </span>)}
+                      </nav>}
+                      {driveTree ? <div className="drive-browser-content" aria-live="polite">
+                        <div className="drive-subfolders">
+                          {driveTree.folders.map((folder) => <button className="drive-folder-item" key={folder.id} type="button" disabled={busy} onClick={() => void browseDriveFolder(undefined, folder.id, folder.resourceKey, drivePath)}>
+                            <span aria-hidden="true">📁</span><span>{folder.name}</span>
+                          </button>)}
+                          {driveTree.folders.length === 0 && <p className="file-manager-empty">{labels.driveFoldersEmpty}</p>}
+                        </div>
+                        <div className="drive-image-grid">
+                          {driveTree.images.map((image) => {
+                            const imageUrl = normalizeImageUrl(image.url);
+                            const isAdded = editingImageUrls.includes(imageUrl);
+                            return <article className="drive-image-item" key={image.id}>
+                              <div className="drive-image-thumb"><ProductImage sources={[imageUrl]} alt={image.name} sizes="110px" fallback="♡" /></div>
+                              <span title={image.name}>{image.name}</span>
+                              <button className="text-button" type="button" disabled={busy || isAdded} onClick={() => addProductImageUrl(imageUrl)}>{isAdded ? labels.imageAdded : labels.addImage}</button>
+                            </article>;
+                          })}
+                          {driveTree.images.length === 0 && <p className="file-manager-empty">{labels.driveNoImages}</p>}
+                        </div>
+                      </div> : <p className="file-manager-empty">{labels.driveFolderHelp}</p>}
+                      <div className="image-manager-tools">
+                        <label className="field"><span>{labels.upload}</span><input type="file" accept="image/*" disabled={busy} onChange={(event) => { void uploadImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
+                        <div className="manual-image-add">
+                          <label className="field"><span>{labels.addImageUrl}</span><input type="url" dir="ltr" placeholder={labels.imageUrlPlaceholder} value={manualImageUrl} onChange={(event) => setManualImageUrl(event.target.value)} /></label>
+                          <button className="button button-light" type="button" disabled={!manualImageUrl.trim()} onClick={addManualImage}>{labels.addImage}</button>
+                        </div>
+                      </div>
+                    </section>
+                    <section className="selected-product-images" aria-label={labels.selectedImages}>
+                      <h4>{labels.selectedImages} · {editingImageUrls.length}</h4>
+                      {editingImageUrls.length > 0 ? <ol className="selected-image-list">
+                        {editingImageUrls.map((imageUrl, index) => <li className="selected-image-item" key={imageUrl}>
+                          <div className="selected-image-thumb"><ProductImage sources={[imageUrl]} alt={`${labels.image} ${index + 1}`} sizes="70px" fallback="♡" /></div>
+                          <div className="selected-image-info">
+                            <strong>{index === 0 ? labels.primaryImage : `${labels.image} ${index + 1}`}</strong>
+                            <span dir="ltr" title={imageUrl}>{imageUrl}</span>
+                          </div>
+                          <div className="selected-image-actions">
+                            <button className="text-button" type="button" aria-label={`${labels.moveImageUp} ${index + 1}`} title={labels.moveImageUp} disabled={index === 0} onClick={() => {
+                              const next = [...editingImageUrls];
+                              [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                              replaceProductImageUrls(next);
+                            }}>↑</button>
+                            <button className="text-button" type="button" aria-label={`${labels.moveImageDown} ${index + 1}`} title={labels.moveImageDown} disabled={index === editingImageUrls.length - 1} onClick={() => {
+                              const next = [...editingImageUrls];
+                              [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                              replaceProductImageUrls(next);
+                            }}>↓</button>
+                            <button className="text-button danger" type="button" onClick={() => replaceProductImageUrls(editingImageUrls.filter((_, imageIndex) => imageIndex !== index))}>{labels.removeImage}</button>
+                          </div>
+                        </li>)}
+                      </ol> : <p className="file-manager-empty">{labels.noProductImages}</p>}
+                    </section>
+                  </div>
                 </section>
-                <label className="field field-full"><span>{labels.csvImageUrls}</span><textarea rows={4} dir="ltr" placeholder="https://example.com/main.jpg&#10;https://example.com/second.jpg" value={editingImageUrls.join("\n")} onChange={(event) => {
-                  const imageUrls = Array.from(new Set(event.target.value.split(/\r?\n/).map((url) => url.trim()).filter(Boolean)));
-                  setEditing({ ...editing, imageUrls, imageUrl: imageUrls[0] ?? null });
-                }} /></label>
                 <label className="field field-full"><span>{labels.csvExtraAttributes}</span><textarea rows={5} dir="ltr" value={feedAttributesText} onChange={(event) => setFeedAttributesText(event.target.value)} aria-describedby="feed-attributes-help" /></label>
                 <small id="feed-attributes-help" className="form-note field-full">{labels.csvExtraAttributesHint}</small>
                 <div className="translation-fields field-full"><p>{labels.translationsOptional}</p>{(["fr", "en", "es"] as const).map((locale) => <div className="translation-locale" key={locale}><label className="field"><span>{locale.toUpperCase()} · Name</span><input value={editing.name?.[locale] ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, [locale]: event.target.value } })} /></label><label className="field"><span>{locale.toUpperCase()} · Description</span><textarea rows={2} value={editing.description?.[locale] ?? ""} onChange={(event) => setEditing({ ...editing, description: { ...blankProduct().description!, ...editing.description, [locale]: event.target.value } })} /></label></div>)}</div>
@@ -396,7 +479,7 @@ export function AdminDashboard() {
               <button className="button button-dark" disabled={busy}>{labels.save}</button>
             </form>
             {status && <p className={isErrorStatus ? "error-text" : "success-text"} role="status">{status}</p>}
-            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={product.imageUrls ?? (product.imageUrl ? [product.imageUrl] : [])} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><button className="text-button" onClick={() => { setEditing(product); setFeedAttributesText(JSON.stringify(product.feedAttributes ?? {}, null, 2)); setDriveFolderLink(""); setDriveTree(null); setDriveAddedImageUrls([]); }}>{labels.edit}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></article>)}</div>
+            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={product.imageUrls ?? (product.imageUrl ? [product.imageUrl] : [])} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><div className="admin-product-actions"><button className="text-button" onClick={() => editProductImages(product)}>{labels.edit}</button><button className="text-button" onClick={() => editProductImages(product, true)}>{labels.imageManager}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></div></article>)}</div>
           </>}
         {status && !isOwner && session && <p className="error-text" role="status">{status}</p>}
         {status && !session && <p className="error-text" role="status">{status}</p>}
