@@ -23,7 +23,7 @@ Do not provide public admin registration. Provision the owner in Supabase Auth a
 
 Allow a small, image-only upload with the bucket's file size and MIME type limits. Product image URLs are public read-only; uploads and mutations are owner-only. Image links must return image content directly; normalize Google Drive sharing links to its `lh3.googleusercontent.com/d/{fileId}=w1600` image URL and require the file to be accessible to anyone with the link. Never accept executable or arbitrary files as product media.
 
-The owner-only admin form may browse a public Google Drive folder on explicit click. Keep its API key server-only, validate the owner session on the route, and do not fetch folder contents while rendering the admin page. Selecting a folder adds image links from that folder and its immediate child folders to the unsaved form; only the normal product-save action writes those links to Supabase.
+The owner-only admin form may browse a public Google Drive folder on explicit click. Keep its API key server-only, validate the owner session on the route, and do not fetch folder contents while rendering the admin page. Load one folder level per navigation click so folder browsing can continue at any depth without eager recursive fetches. The product image manager may add, remove, and reorder image links in the unsaved form; only the normal product-save action writes those links to Supabase. Removing a link does not delete the source file. Drive file/folder mutations are out of scope unless a separately authorized Google OAuth integration is added.
 
 ## Localization and accessibility
 
