@@ -44,7 +44,7 @@ deploy_to_production:
     name: production
     url: https://qurraojos.vercel.app
   rules:
-    - if: '$CI_COMMIT_BRANCH == "dev"'
+    - if: '$CI_COMMIT_BRANCH == "staging"'
       changes:
         - src/*
         - src/**/*
