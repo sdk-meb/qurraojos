@@ -1,0 +1,64 @@
+deploy_to_production:
+  image: node:22
+  stage: deploy
+  resource_group: vercel-production
+  interruptible: true
+  script:
+    # Enable corepack and install pnpm globally
+    - corepack enable
+    - corepack install -g pnpm@12.14.0
+    
+    # Verify pnpm is available
+    - pnpm --version
+    
+    # Install project dependencies
+    - pnpm install --frozen-lockfile
+    
+    # Validate environment variables
+    - |
+      if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+        echo "ERROR: Missing required environment variables"
+        exit 1
+      fi
+    
+    # Validate ID format (alphanumeric, no spaces)
+    - |
+      if ! echo "$VERCEL_ORG_ID" | grep -qE '^[a-zA-Z0-9_-]+$' || ! echo "$VERCEL_PROJECT_ID" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+        echo "ERROR: Invalid VERCEL_ORG_ID or VERCEL_PROJECT_ID format"
+        exit 1
+      fi
+    
+    # Install Vercel CLI globally
+    - npm install -g vercel@latest
+    
+    # Deploy to Vercel
+    - vercel whoami --token="$VERCEL_TOKEN"
+    - vercel pull --yes --environment=production --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
+    - vercel build --prod --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
+    - vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" 
+      -m gitlabDeployment=1 
+      -m "gitlabCommitRef=$CI_COMMIT_REF_NAME" 
+      -m "gitlabCommitSha=$CI_COMMIT_SHA" 
+      -m "gitlabPipelineId=$CI_PIPELINE_ID"
+  environment:
+    name: production
+    url: https://qurraojos.vercel.app
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "staging"'
+      changes:
+        - src/*
+        - src/**/*
+        - supabase/*
+        - supabase/**/*
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - next.config.mjs
+        - postcss.config.mjs
+        - tailwind.config.ts
+        - tsconfig.json
+        - .gitlab-ci.yml
+      when: always
+    - when: never
+  variables:
+    VERCEL_CLI_TELEMETRY_DISABLED: "1"
