@@ -17,6 +17,7 @@ Public/
 
 # production
 /build
+/ssl
 
 # misc
 .DS_Store
