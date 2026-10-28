@@ -354,16 +354,14 @@ export function AdminDashboard() {
     }));
   }
 
-  function editProductImages(product: Product, openManager = false) {
+  function editProductImages(product: Product) {
     setEditing(product);
     setFeedAttributesText(JSON.stringify(product.feedAttributes ?? {}, null, 2));
     setDriveFolderLink("");
     setDriveTree(null);
     setDrivePath([]);
     setManualImageUrl("");
-    if (openManager) {
       document.getElementById("product-file-manager")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
   }
 
   const isOwner = session?.user.app_metadata?.store_owner === true;
@@ -479,7 +477,7 @@ export function AdminDashboard() {
               <button className="button button-dark" disabled={busy}>{labels.save}</button>
             </form>
             {status && <p className={isErrorStatus ? "error-text" : "success-text"} role="status">{status}</p>}
-            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={product.imageUrls ?? (product.imageUrl ? [product.imageUrl] : [])} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><div className="admin-product-actions"><button className="text-button" onClick={() => editProductImages(product)}>{labels.edit}</button><button className="text-button" onClick={() => editProductImages(product, true)}>{labels.imageManager}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></div></article>)}</div>
+            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={product.imageUrls ?? (product.imageUrl ? [product.imageUrl] : [])} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><div className="admin-product-actions"><button className="text-button" onClick={() => editProductImages(product)}>{labels.imageManager}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></div></article>)}</div>
           </>}
         {status && !isOwner && session && <p className="error-text" role="status">{status}</p>}
         {status && !session && <p className="error-text" role="status">{status}</p>}
