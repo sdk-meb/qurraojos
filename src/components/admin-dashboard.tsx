@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { categories, getSupabase, productFromRow, type Product, type ProductVariant } from "@/lib/catalog";
+import { categories, colorFromRow, getSupabase, productFromRows, productImageUrls, type Color, type Product, type ProductColorOption, type ProductImageRecord } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 import type { ProductCsvIssue } from "@/lib/product-csv";
 import { normalizeImageUrl } from "@/lib/image-url";
@@ -34,10 +34,12 @@ const blankProduct = (): Partial<Product> => ({
   id: "", slug: "", categoryId: "",
   name: { ar: "", fr: "", en: "", es: "" },
   description: { ar: "", fr: "", en: "", es: "" },
-  priceMad: 0, availability: "in-stock", imageUrl: "", imageUrls: [],
-  feedItemId: "", brand: "", condition: "new", productUrl: "",
+  priceMad: 0, availability: "in-stock",
+  feedItemId: "", brand: "", condition: "new",
   regularPriceMad: null, salePriceMad: null, quantityToSell: null,
-  feedAttributes: {}, variants: [],
+  feedAttributes: {},
+  images: [],
+  colorOptions: [],
 });
 
 export function AdminDashboard() {
@@ -45,6 +47,7 @@ export function AdminDashboard() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
   const [editing, setEditing] = useState<Partial<Product>>(blankProduct());
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -54,8 +57,36 @@ export function AdminDashboard() {
   const [driveTree, setDriveTree] = useState<DriveFolderNode | null>(null);
   const [drivePath, setDrivePath] = useState<DriveFolderNode[]>([]);
   const [manualImageUrl, setManualImageUrl] = useState("");
+  const [selectedColorKey, setSelectedColorKey] = useState("");
+  const [colorToAdd, setColorToAdd] = useState("");
+  const [savedColorOptionIds, setSavedColorOptionIds] = useState<string[]>([]);
+  const [savedImageIds, setSavedImageIds] = useState<string[]>([]);
   const labels = getCopy(language);
   const supabase = useMemo(() => getSupabase(), []);
+
+  const refreshProducts = useCallback(async () => {
+    if (!supabase) return false;
+    const [productsResult, colorsResult, imagesResult, colorRegistryResult] = await Promise.all([
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("product_color_options").select("*").order("sort_order", { ascending: true }),
+      supabase.from("product_images").select("*").order("sort_order", { ascending: true }),
+      supabase.from("colors").select("*").eq("active", true).order("sort_order", { ascending: true }),
+    ]);
+    if (productsResult.error || colorsResult.error || imagesResult.error || colorRegistryResult.error) {
+      setStatus(labels.adminLoadError);
+      return false;
+    }
+    const colorRegistry = (colorRegistryResult.data ?? [])
+      .map((row) => colorFromRow(row as Record<string, unknown>));
+    setColors(colorRegistry);
+    setProducts(productFromRows(
+      (productsResult.data ?? []) as Record<string, unknown>[],
+      (colorsResult.data ?? []) as Record<string, unknown>[],
+      (imagesResult.data ?? []) as Record<string, unknown>[],
+      colorRegistry,
+    ));
+    return true;
+  }, [labels.adminLoadError, supabase]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -68,18 +99,13 @@ export function AdminDashboard() {
   }, [supabase]);
 
   useEffect(() => {
-    async function load() {
-      if (!supabase || !session) return;
-      if (session.user.app_metadata?.store_owner !== true) {
-        setStatus(labels.adminDenied);
-        return;
-      }
-      const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-      if (error) setStatus(labels.adminLoadError);
-      else setProducts((data ?? []).map((row) => productFromRow(row)));
+    if (!supabase || !session) return;
+    if (session.user.app_metadata?.store_owner !== true) {
+      setStatus(labels.adminDenied);
+      return;
     }
-    void load();
-  }, [supabase, session, labels.adminDenied, labels.adminLoadError]);
+    void refreshProducts();
+  }, [supabase, session, labels.adminDenied, refreshProducts]);
 
   if (!supabase) return <main className="admin-page"><div className="admin-panel"><span className="eyebrow">QURRAOJOS · ADMIN</span><h1>{labels.adminTitle}</h1><p>{labels.adminSetup}</p><code>NEXT_PUBLIC_SUPABASE_URL<br />NEXT_PUBLIC_SUPABASE_ANON_KEY</code></div></main>;
 
@@ -94,21 +120,78 @@ export function AdminDashboard() {
   function addProductImageUrl(url: string) {
     const normalizedUrl = normalizeImageUrl(url);
     setEditing((current) => {
-      const currentUrls = current.imageUrls?.length
-        ? current.imageUrls
-        : current.imageUrl ? [current.imageUrl] : [];
-      const imageUrls = Array.from(new Set([...currentUrls.map(normalizeImageUrl), normalizedUrl]));
-      return { ...current, imageUrl: imageUrls[0] ?? null, imageUrls };
+      const selectedColor = current.colorOptions?.find((option) => option.colorKey === selectedColorKey);
+      if (selectedColor) {
+        const images = selectedColor.images.some((image) => image.url === normalizedUrl)
+          ? selectedColor.images
+          : [...selectedColor.images, { url: normalizedUrl, sortOrder: selectedColor.images.length }];
+        return {
+          ...current,
+          colorOptions: current.colorOptions?.map((option) =>
+            option.colorKey === selectedColorKey
+              ? { ...option, images }
+              : option,
+          ),
+        };
+      }
+      const images = current.images ?? [];
+      return images.some((image) => image.url === normalizedUrl)
+        ? current
+        : { ...current, images: [...images, { url: normalizedUrl, sortOrder: images.length }] };
     });
   }
 
-  function replaceProductImageUrls(imageUrls: string[]) {
+  function replaceProductImages(imageUrls: string[]) {
     const normalizedUrls = Array.from(new Set(imageUrls.map(normalizeImageUrl).filter(Boolean)));
+    setEditing((current) => {
+      const selectedColor = current.colorOptions?.find((option) => option.colorKey === selectedColorKey);
+      const previousImages = selectedColor ? selectedColor.images : current.images ?? [];
+      const images: ProductImageRecord[] = normalizedUrls.map((url, sortOrder) => ({
+        ...previousImages.find((image) => image.url === url),
+        url,
+        sortOrder,
+      }));
+      if (selectedColor) {
+        return {
+          ...current,
+          colorOptions: current.colorOptions?.map((option) =>
+            option.colorKey === selectedColorKey
+              ? { ...option, images }
+              : option,
+          ),
+        };
+      }
+      return { ...current, images };
+    });
+  }
+
+  function updateColorOption(index: number, update: Partial<ProductColorOption>) {
     setEditing((current) => ({
       ...current,
-      imageUrl: normalizedUrls[0] ?? null,
-      imageUrls: normalizedUrls,
+      colorOptions: (current.colorOptions ?? []).map((option, optionIndex) =>
+        optionIndex === index ? { ...option, ...update } : option,
+      ),
     }));
+  }
+
+  function addColorOption() {
+    const color = colors.find((item) => item.id === colorToAdd);
+    if (!color || (editing.colorOptions ?? []).some((option) => option.colorKey === color.id)) return;
+    const colorKey = color.id;
+    setSelectedColorKey(colorKey);
+    setEditing((current) => {
+      const colorOptions = current.colorOptions ?? [];
+      const colorOption: ProductColorOption = {
+        colorKey,
+        label: color.label,
+        hexColor: color.hexColor,
+        available: true,
+        priceMad: null,
+        images: [],
+        sortOrder: colorOptions.length,
+      };
+      return { ...current, colorOptions: [...colorOptions, colorOption] };
+    });
   }
 
   function addManualImage() {
@@ -147,8 +230,8 @@ export function AdminDashboard() {
           invalidQuantity: labels.csvInvalidQuantity,
           invalidCategory: labels.csvInvalidCategory,
           invalidUrl: labels.csvInvalidUrl,
+          invalidColor: labels.csvInvalidColor,
           duplicate: labels.csvDuplicate,
-          tooManyVariants: labels.csvTooManyVariants,
         }[reason];
         return `${labels.csvRow} ${line}: ${reasonLabel}`;
       }).join("; ");
@@ -185,11 +268,10 @@ export function AdminDashboard() {
         return;
       }
 
-      const { data, error: refreshError } = await supabase!.from("products").select("*").order("created_at", { ascending: false });
-      if (refreshError) {
+      const refreshed = await refreshProducts();
+      if (!refreshed) {
         setStatus(`${labels.csvImportSuccess} ${result.imported ?? 0}. ${labels.adminLoadError}`);
       } else {
-        setProducts((data ?? []).map((row) => productFromRow(row)));
         const issues = result.issues ?? [];
         const issueSummary = describeIssues(issues);
         const colorSummary = result.colorsImported ? ` ${labels.csvColorsImported} ${result.colorsImported}.` : "";
@@ -218,14 +300,17 @@ export function AdminDashboard() {
       return;
     }
     setBusy(true); setStatus("");
-    const variants = editing.variants ?? [];
-    const variantIds = variants.map((item) => item.id);
+    const colorOptions = editing.colorOptions ?? [];
+    const invalidColorOptions = colorOptions.some((option) =>
+      !colors.some((color) => color.id === option.colorKey) ||
+      !option.images.every((image) => isHttpUrl(image.url)) ||
+      (option.priceMad != null && (!Number.isInteger(option.priceMad) || option.priceMad < 10 || option.priceMad > 300)),
+    ) || new Set(colorOptions.map((option) => option.colorKey)).size !== colorOptions.length;
     if (
-      variants.length > 8 ||
-      variants.some((item) => !item.id?.trim() || !item.label?.ar?.trim() || typeof item.available !== "boolean") ||
-      new Set(variantIds).size !== variantIds.length
+      invalidColorOptions ||
+      !(editing.images ?? []).every((image) => isHttpUrl(image.url))
     ) {
-      setStatus(variants.length > 8 ? labels.variantLimit : labels.invalidVariants);
+      setStatus(invalidColorOptions ? labels.invalidColorOptions : labels.invalidImageUrl);
       setBusy(false);
       return;
     }
@@ -236,52 +321,144 @@ export function AdminDashboard() {
       description: editing.description,
       price_mad: Number(editing.priceMad),
       available: editing.availability === "in-stock",
-      image_urls: (editing.imageUrls ?? (editing.imageUrl ? [editing.imageUrl] : [])).map(normalizeImageUrl),
-      image_url: normalizeImageUrl((editing.imageUrls?.[0] ?? editing.imageUrl) || "") || null,
       feed_item_id: editing.feedItemId?.trim() || null,
       brand: editing.brand?.trim() || null,
       condition: editing.condition?.trim() || null,
-      product_url: editing.productUrl?.trim() || null,
       regular_price_mad: editing.regularPriceMad ?? null,
       sale_price_mad: editing.salePriceMad ?? null,
       quantity_to_sell_on_facebook: editing.quantityToSell ?? null,
       feed_attributes: feedAttributes,
-      variants,
     };
-    const imageUrlsValid = record.image_urls.every((url) => isHttpUrl(url));
     if (!record.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(record.slug) ||
       !Number.isInteger(record.price_mad) || record.price_mad < 10 || record.price_mad > 300 ||
       (record.regular_price_mad !== null && (!Number.isInteger(record.regular_price_mad) || record.regular_price_mad < 10 || record.regular_price_mad > 300)) ||
       (record.sale_price_mad !== null && (!Number.isInteger(record.sale_price_mad) || record.sale_price_mad < 10 || record.sale_price_mad > 300)) ||
-      (record.quantity_to_sell_on_facebook !== null && (!Number.isInteger(record.quantity_to_sell_on_facebook) || record.quantity_to_sell_on_facebook < 1)) ||
-      !imageUrlsValid || (record.product_url && !isHttpUrl(record.product_url))) {
+      (record.quantity_to_sell_on_facebook !== null && (!Number.isInteger(record.quantity_to_sell_on_facebook) || record.quantity_to_sell_on_facebook < 1))) {
       setStatus(labels.invalidProduct);
       setBusy(false);
       return;
     }
     const result = editing.id
-      ? await supabase!.from("products").update(record).eq("id", editing.id)
-      : await supabase!.from("products").insert(record);
-    if (result.error) setStatus(`تعذر الحفظ: ${result.error.message}`);
-    else {
-      setStatus(labels.saved);
-      setEditing(blankProduct());
-      setFeedAttributesText("{}");
-      setDriveFolderLink("");
-      setDriveTree(null);
-      setDrivePath([]);
-      setManualImageUrl("");
-      const { data } = await supabase!.from("products").select("*").order("created_at", { ascending: false });
-      if (data) setProducts(data.map((row) => productFromRow(row)));
+      ? await supabase!.from("products").update(record).eq("id", editing.id).select("id").single()
+      : await supabase!.from("products").insert(record).select("id").single();
+    if (result.error) {
+      setStatus(`تعذر الحفظ: ${result.error.message}`);
+      setBusy(false);
+      return;
     }
+    const productId = result.data.id as string;
+    const colorRows = colorOptions.map((option, index) => ({
+      ...(option.id ? { id: option.id } : {}),
+      product_id: productId,
+      color_id: option.colorKey,
+      feed_item_id: option.feedItemId ?? null,
+      available: option.available,
+      price_mad: option.priceMad ?? null,
+      source_title: option.sourceTitle ?? null,
+      source_description: option.sourceDescription ?? null,
+      sort_order: index,
+    }));
+    const existingColorRows = colorRows.filter((row) => row.id);
+    const newColorRows = colorRows.filter((row) => !row.id);
+    const colorWrites = await Promise.all([
+      existingColorRows.length
+        ? supabase!.from("product_color_options").upsert(existingColorRows, { onConflict: "id" })
+        : Promise.resolve({ error: null }),
+      newColorRows.length
+        ? supabase!.from("product_color_options").upsert(newColorRows, { onConflict: "product_id,color_id" })
+        : Promise.resolve({ error: null }),
+    ]);
+    const colorWriteError = colorWrites.find((write) => write.error)?.error;
+    if (colorWriteError) {
+        setStatus(`${labels.colorSaveError} ${colorWriteError.message}`);
+        setBusy(false);
+        return;
+    }
+    const currentOptionIds = new Set(colorOptions.map((option) => option.id).filter((id): id is string => Boolean(id)));
+    const removedOptionIds = savedColorOptionIds.filter((id) => !currentOptionIds.has(id));
+    if (removedOptionIds.length) {
+      const { error } = await supabase!.from("product_color_options").delete().in("id", removedOptionIds);
+      if (error) {
+        setStatus(`${labels.colorSaveError} ${error.message}`);
+        setBusy(false);
+        return;
+      }
+    }
+    const { data: savedOptions, error: savedOptionsError } = await supabase!.from("product_color_options")
+      .select("id, color_id").eq("product_id", productId);
+    if (savedOptionsError) {
+      setStatus(`${labels.colorSaveError} ${savedOptionsError.message}`);
+      setBusy(false);
+      return;
+    }
+    const optionIds = new Map((savedOptions ?? []).map((option) => [option.color_id as string, option.id as string]));
+    const imageRows = [
+      ...(editing.images ?? []).map((image, index) => ({
+        ...(image.id ? { id: image.id } : {}),
+        product_id: productId,
+        color_option_id: null,
+        image_url: normalizeImageUrl(image.url),
+        sort_order: index,
+      })),
+      ...colorOptions.flatMap((option) => {
+        const colorOptionId = optionIds.get(option.colorKey);
+        if (!colorOptionId) return [];
+        return option.images.map((image, index) => ({
+          ...(image.id ? { id: image.id } : {}),
+          product_id: productId,
+          color_option_id: colorOptionId,
+          image_url: normalizeImageUrl(image.url),
+          sort_order: index,
+        }));
+      }),
+    ];
+    const existingImageRows = imageRows.filter((row) => row.id);
+    const newImageRows = imageRows.filter((row) => !row.id);
+    const imageWrites = await Promise.all([
+      existingImageRows.length
+        ? supabase!.from("product_images").upsert(existingImageRows, { onConflict: "id" })
+        : Promise.resolve({ error: null }),
+      newImageRows.length
+        ? supabase!.from("product_images").upsert(newImageRows, { onConflict: "product_id,color_option_id,image_url" })
+        : Promise.resolve({ error: null }),
+    ]);
+    const imageWriteError = imageWrites.find((write) => write.error)?.error;
+    if (imageWriteError) {
+      setStatus(`${labels.imageSaveError} ${imageWriteError.message}`);
+      setBusy(false);
+      return;
+    }
+    const currentImageIds = new Set(imageRows.map((image) => image.id).filter((id): id is string => Boolean(id)));
+    const removedImageIds = savedImageIds.filter((id) => !currentImageIds.has(id));
+    if (removedImageIds.length) {
+      const { error } = await supabase!.from("product_images").delete().in("id", removedImageIds);
+      if (error) {
+        setStatus(`${labels.imageSaveError} ${error.message}`);
+        setBusy(false);
+        return;
+      }
+    }
+    setStatus(labels.saved);
+    setEditing(blankProduct());
+    setFeedAttributesText("{}");
+    setDriveFolderLink("");
+    setDriveTree(null);
+    setDrivePath([]);
+    setManualImageUrl("");
+    setSelectedColorKey("");
+    setColorToAdd("");
+    setSavedColorOptionIds([]);
+    setSavedImageIds([]);
+    await refreshProducts();
     setBusy(false);
   }
 
-  async function browseDriveFolder(
+async function browseDriveFolder(
     folderLink?: string,
     folderId?: string,
     resourceKey?: string,
     ancestors: DriveFolderNode[] = [],
+    maxDepth: number = 1,
   ) {
     if (!session || session.user.app_metadata?.store_owner !== true) {
       setStatus(labels.adminDenied);
@@ -297,7 +474,7 @@ export function AdminDashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(folderLink ? { folderUrl: folderLink } : { folderId, resourceKey }),
+        body: JSON.stringify(folderLink ? { folderUrl: folderLink, maxDepth } : { folderId, resourceKey, maxDepth }),
       });
       const result = await response.json() as { folder?: DriveFolderNode; error?: string };
       if (!response.ok || !result.folder) {
@@ -345,33 +522,30 @@ export function AdminDashboard() {
     else { setProducts((current) => current.filter((product) => product.id !== id)); setStatus(labels.deleted); }
   }
 
-  function updateVariant(index: number, update: Partial<ProductVariant>) {
-    setEditing((current) => ({
-      ...current,
-      variants: (current.variants ?? []).map((variant, variantIndex) =>
-        variantIndex === index ? { ...variant, ...update } : variant,
-      ),
-    }));
-  }
-
-  function editProductImages(product: Product, openManager = false) {
+  function editProductImages(product: Product) {
     setEditing(product);
     setFeedAttributesText(JSON.stringify(product.feedAttributes ?? {}, null, 2));
     setDriveFolderLink("");
     setDriveTree(null);
     setDrivePath([]);
     setManualImageUrl("");
-    if (openManager) {
-      document.getElementById("product-file-manager")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    setSelectedColorKey("");
+    setColorToAdd("");
+    setSavedColorOptionIds((product.colorOptions ?? []).map((option) => option.id).filter((id): id is string => Boolean(id)));
+    setSavedImageIds([
+      ...(product.images ?? []).map((image) => image.id),
+      ...(product.colorOptions ?? []).flatMap((option) => option.images.map((image) => image.id)),
+    ].filter((id): id is string => Boolean(id)));
+    document.getElementById("product-file-manager")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
+
   const isOwner = session?.user.app_metadata?.store_owner === true;
-  const editingImageUrls = (editing.imageUrls?.length
-    ? editing.imageUrls
-    : editing.imageUrl ? [editing.imageUrl] : []).map(normalizeImageUrl);
+  const selectedColorOption = editing.colorOptions?.find((option) => option.colorKey === selectedColorKey);
+  const selectedImages = selectedColorOption?.images ?? editing.images ?? [];
+  const editingImageUrls = selectedImages.map((image) => normalizeImageUrl(image.url));
   const isErrorStatus = status.includes("تعذر") || status.includes("ليس مخولاً") || status.includes(labels.driveLoadError) ||
-    [labels.csvInvalidFile, labels.csvImportError, labels.csvNoProducts, labels.csvAttributesInvalid, labels.invalidImageUrl].some((message) => status.includes(message));
+    [labels.csvInvalidFile, labels.csvImportError, labels.csvNoProducts, labels.csvAttributesInvalid, labels.invalidImageUrl, labels.colorSaveError, labels.imageSaveError].some((message) => status.includes(message));
   return (
     <main className="admin-page">
       <div className="admin-panel">
@@ -385,7 +559,7 @@ export function AdminDashboard() {
               <p>{labels.csvHint}</p>
             </section>
             <form className="admin-editor" onSubmit={saveProduct}>
-              <div className="editor-heading"><h2>{editing.id ? labels.edit : labels.newProduct}</h2><button className="button button-light" type="button" onClick={() => { setEditing(blankProduct()); setFeedAttributesText("{}"); setDriveFolderLink(""); setDriveTree(null); setDrivePath([]); setManualImageUrl(""); }}>{labels.newProduct} +</button></div>
+              <div className="editor-heading"><h2>{editing.id ? labels.edit : labels.newProduct}</h2><button className="button button-light" type="button" onClick={() => { setEditing(blankProduct()); setFeedAttributesText("{}"); setDriveFolderLink(""); setDriveTree(null); setDrivePath([]); setManualImageUrl(""); setSelectedColorKey(""); setSavedColorOptionIds([]); }}>{labels.newProduct} +</button></div>
               <div className="editor-grid">
                 <label className="field"><span>{labels.productName}</span><input required value={editing.name?.ar ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.productSlug}</span><input required value={editing.slug ?? ""} onChange={(event) => setEditing({ ...editing, slug: event.target.value })} /></label>
@@ -394,12 +568,60 @@ export function AdminDashboard() {
                 <label className="field"><span>{labels.csvItemId}</span><input value={editing.feedItemId ?? ""} onChange={(event) => setEditing({ ...editing, feedItemId: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvBrand}</span><input value={editing.brand ?? ""} onChange={(event) => setEditing({ ...editing, brand: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvCondition}</span><input value={editing.condition ?? ""} onChange={(event) => setEditing({ ...editing, condition: event.target.value })} /></label>
-                <label className="field"><span>{labels.csvProductUrl}</span><input type="url" value={editing.productUrl ?? ""} onChange={(event) => setEditing({ ...editing, productUrl: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvRegularPrice}</span><input type="number" min="10" max="300" step="1" value={editing.regularPriceMad ?? ""} onChange={(event) => setEditing({ ...editing, regularPriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field"><span>{labels.csvSalePrice}</span><input type="number" min="10" max="300" step="1" value={editing.salePriceMad ?? ""} onChange={(event) => setEditing({ ...editing, salePriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field"><span>{labels.csvQuantity}</span><input type="number" min="1" step="1" value={editing.quantityToSell ?? ""} onChange={(event) => setEditing({ ...editing, quantityToSell: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field field-full"><span>{labels.description}</span><textarea rows={3} value={editing.description?.ar ?? ""} onChange={(event) => setEditing({ ...editing, description: { ...blankProduct().description!, ...editing.description, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.status}</span><select value={editing.availability} onChange={(event) => setEditing({ ...editing, availability: event.target.value as Product["availability"] })}><option value="in-stock">{labels.inStock}</option><option value="out-of-stock">{labels.outOfStock}</option></select></label>
+                <fieldset className="color-options-editor field-full">
+                  <legend>{labels.colorOptions}</legend>
+                  {(editing.colorOptions ?? []).map((option, index) => (
+                    <div className="color-option-row" key={option.id ?? option.colorKey}>
+                      <p className="fixed-color-label">
+                        <span className="product-color-swatch" style={{ backgroundColor: option.hexColor }} aria-hidden="true" />
+                        {localized(option.label, language)}
+                      </p>
+                      <label className="field">
+                        <span>{labels.colorPrice}</span>
+                        <input type="number" min="10" max="300" step="1" value={option.priceMad ?? ""} onChange={(event) => updateColorOption(index, {
+                          priceMad: event.target.value ? Number(event.target.value) : null,
+                        })} />
+                      </label>
+                      <label className="color-option-availability">
+                        <input type="checkbox" checked={option.available} onChange={(event) => updateColorOption(index, { available: event.target.checked })} />
+                        {labels.colorAvailable}
+                      </label>
+                      <button className="text-button danger" type="button" onClick={() => {
+                        setEditing((current) => ({
+                          ...current,
+                          colorOptions: (current.colorOptions ?? []).filter((_, optionIndex) => optionIndex !== index),
+                        }));
+                        if (selectedColorKey === option.colorKey) setSelectedColorKey("");
+                      }}>{labels.removeColor}</button>
+                    </div>
+                  ))}
+                  <div className="add-color-control">
+                    <label className="field">
+                      <span>{labels.colorOptions}</span>
+                      <select value={colorToAdd} onChange={(event) => setColorToAdd(event.target.value)}>
+                        <option value="">{labels.selectColor}</option>
+                        {colors.filter((color) => !(editing.colorOptions ?? []).some((option) => option.colorKey === color.id))
+                          .map((color) => <option key={color.id} value={color.id}>{localized(color.label, language)}</option>)}
+                      </select>
+                    </label>
+                    <button className="button button-light" type="button" disabled={!colorToAdd} onClick={() => { addColorOption(); setColorToAdd(""); }}>{labels.addColor} +</button>
+                  </div>
+                  <label className="field color-image-group">
+                    <span>{labels.colorImageGroup}</span>
+                    <select value={selectedColorKey} onChange={(event) => setSelectedColorKey(event.target.value)}>
+                      <option value="">{labels.productImages}</option>
+                      {(editing.colorOptions ?? []).map((option) => (
+                        <option key={option.id ?? option.colorKey} value={option.colorKey}>{localized(option.label, language)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="form-note">{labels.colorImageHelp}</p>
+                </fieldset>
                 <section id="product-file-manager" className="product-file-manager field-full" aria-label={labels.imageManager}>
                   <div className="file-manager-heading">
                     <div><h3>{labels.imageManager}</h3><p>{labels.imageManagerHelp}</p></div>
@@ -407,8 +629,8 @@ export function AdminDashboard() {
                   <div className="file-manager-grid">
                     <section className="drive-browser" aria-label={labels.driveContents}>
                       <div className="drive-folder-picker">
-                        <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label>
-                        <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => void browseDriveFolder(driveFolderLink.trim())}>{labels.driveBrowse}</button>
+                        <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label><label className="field"><span>Max Depth</span><input   type="number"   id="maxDepthInput"  min="1"   max="10"   defaultValue="1"  disabled={busy} /></label>
+                        <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => { const maxDepth = Math.max(1, Math.min(parseInt((document.getElementById('maxDepthInput') as HTMLInputElement)?.value || '1'), 10));void browseDriveFolder(driveFolderLink.trim(), undefined, undefined, [], maxDepth);}}>{labels.driveBrowse}</button>
                       </div>
                       {drivePath.length > 0 && <nav className="drive-breadcrumbs" aria-label={labels.driveContents}>
                         {drivePath.map((folder, index) => <span key={folder.id}>
@@ -445,9 +667,11 @@ export function AdminDashboard() {
                       </div>
                     </section>
                     <section className="selected-product-images" aria-label={labels.selectedImages}>
-                      <h4>{labels.selectedImages} · {editingImageUrls.length}</h4>
+                      <h4>{labels.selectedImages} · {selectedColorOption ? localized(selectedColorOption.label, language) : labels.productImages} · {editingImageUrls.length}</h4>
                       {editingImageUrls.length > 0 ? <ol className="selected-image-list">
-                        {editingImageUrls.map((imageUrl, index) => <li className="selected-image-item" key={imageUrl}>
+                        {selectedImages.map((image, index) => {
+                          const imageUrl = editingImageUrls[index];
+                          return <li className="selected-image-item" key={image.id ?? imageUrl}>
                           <div className="selected-image-thumb"><ProductImage sources={[imageUrl]} alt={`${labels.image} ${index + 1}`} sizes="70px" fallback="♡" /></div>
                           <div className="selected-image-info">
                             <strong>{index === 0 ? labels.primaryImage : `${labels.image} ${index + 1}`}</strong>
@@ -457,16 +681,17 @@ export function AdminDashboard() {
                             <button className="text-button" type="button" aria-label={`${labels.moveImageUp} ${index + 1}`} title={labels.moveImageUp} disabled={index === 0} onClick={() => {
                               const next = [...editingImageUrls];
                               [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                              replaceProductImageUrls(next);
+                              replaceProductImages(next);
                             }}>↑</button>
                             <button className="text-button" type="button" aria-label={`${labels.moveImageDown} ${index + 1}`} title={labels.moveImageDown} disabled={index === editingImageUrls.length - 1} onClick={() => {
                               const next = [...editingImageUrls];
                               [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                              replaceProductImageUrls(next);
+                              replaceProductImages(next);
                             }}>↓</button>
-                            <button className="text-button danger" type="button" onClick={() => replaceProductImageUrls(editingImageUrls.filter((_, imageIndex) => imageIndex !== index))}>{labels.removeImage}</button>
+                            <button className="text-button danger" type="button" onClick={() => replaceProductImages(editingImageUrls.filter((_, imageIndex) => imageIndex !== index))}>{labels.removeImage}</button>
                           </div>
-                        </li>)}
+                        </li>;
+                        })}
                       </ol> : <p className="file-manager-empty">{labels.noProductImages}</p>}
                     </section>
                   </div>
@@ -474,12 +699,11 @@ export function AdminDashboard() {
                 <label className="field field-full"><span>{labels.csvExtraAttributes}</span><textarea rows={5} dir="ltr" value={feedAttributesText} onChange={(event) => setFeedAttributesText(event.target.value)} aria-describedby="feed-attributes-help" /></label>
                 <small id="feed-attributes-help" className="form-note field-full">{labels.csvExtraAttributesHint}</small>
                 <div className="translation-fields field-full"><p>{labels.translationsOptional}</p>{(["fr", "en", "es"] as const).map((locale) => <div className="translation-locale" key={locale}><label className="field"><span>{locale.toUpperCase()} · Name</span><input value={editing.name?.[locale] ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, [locale]: event.target.value } })} /></label><label className="field"><span>{locale.toUpperCase()} · Description</span><textarea rows={2} value={editing.description?.[locale] ?? ""} onChange={(event) => setEditing({ ...editing, description: { ...blankProduct().description!, ...editing.description, [locale]: event.target.value } })} /></label></div>)}</div>
-                <fieldset className="variants-editor field-full"><legend>{labels.variants}</legend><p>{labels.variantHelp}</p>{(editing.variants ?? []).map((variant, index) => <div className="variant-row" key={variant.id}><label className="field"><span>{labels.variantArabic}</span><input required value={variant.label.ar} onChange={(event) => updateVariant(index, { label: { ...variant.label, ar: event.target.value } })} /></label><div className="variant-translations">{(["fr", "en", "es"] as const).map((locale) => <label className="field" key={locale}><span>{locale.toUpperCase()}</span><input value={variant.label[locale]} onChange={(event) => updateVariant(index, { label: { ...variant.label, [locale]: event.target.value } })} /></label>)}</div><label className="variant-availability"><input type="checkbox" checked={variant.available} onChange={(event) => updateVariant(index, { available: event.target.checked })} />{labels.variantAvailable}</label><button className="text-button danger" type="button" onClick={() => setEditing((current) => ({ ...current, variants: (current.variants ?? []).filter((_, variantIndex) => variantIndex !== index) }))}>{labels.removeVariant}</button></div>)}<button className="button button-light" type="button" disabled={(editing.variants?.length ?? 0) >= 8} onClick={() => setEditing((current) => ({ ...current, variants: [...(current.variants ?? []), { id: crypto.randomUUID(), label: { ar: "", fr: "", en: "", es: "" }, available: true }] }))}>{labels.addVariant} +</button>{(editing.variants?.length ?? 0) >= 8 && <small>{labels.variantLimit}</small>}</fieldset>
               </div>
               <button className="button button-dark" disabled={busy}>{labels.save}</button>
             </form>
             {status && <p className={isErrorStatus ? "error-text" : "success-text"} role="status">{status}</p>}
-            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={product.imageUrls ?? (product.imageUrl ? [product.imageUrl] : [])} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><div className="admin-product-actions"><button className="text-button" onClick={() => editProductImages(product)}>{labels.edit}</button><button className="text-button" onClick={() => editProductImages(product, true)}>{labels.imageManager}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></div></article>)}</div>
+            <div className="admin-list"><h2>{labels.catalog} · {products.length}</h2>{products.map((product) => <article className="admin-product" key={product.id}><div className="admin-thumb"><ProductImage sources={productImageUrls(product)} alt="" sizes="45px" fallback="♡" /></div><div><strong>{product.name.ar}</strong><small>{product.slug} · {product.priceMad} DH · {product.availability === "in-stock" ? labels.inStock : labels.outOfStock}</small></div><div className="admin-product-actions"><button className="text-button" onClick={() => editProductImages(product)}>{labels.imageManager}</button><button className="text-button danger" onClick={() => void deleteProduct(product.id)}>{labels.delete}</button></div></article>)}</div>
           </>}
         {status && !isOwner && session && <p className="error-text" role="status">{status}</p>}
         {status && !session && <p className="error-text" role="status">{status}</p>}

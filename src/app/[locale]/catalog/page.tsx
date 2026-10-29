@@ -16,12 +16,12 @@ export default async function CatalogPage({ params, searchParams }: { params: { 
     const description = localized(product.description, params.locale).toLocaleLowerCase();
     return (!category || product.categoryId === category) &&
       (!query || name.includes(query) || description.includes(query)) &&
-      (!color || product.variants.some((variant) => variant.kind === "color" && variant.id === color));
+      (!color || product.colorOptions?.some((option) => option.colorKey === color && option.available));
   });
   const colors = Array.from(new Map(products.flatMap((product) =>
-    product.variants
-      .filter((variant) => variant.kind === "color" && variant.available)
-      .map((variant) => [variant.id, variant.label] as const),
+    (product.colorOptions ?? [])
+      .filter((option) => option.available)
+      .map((option) => [option.colorKey, option.label] as const),
   )).entries()).map(([id, label]) => ({ id, label }));
   const currentCategory = categories.find((item) => item.id === category);
   return (

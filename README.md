@@ -21,7 +21,7 @@ Without Supabase, local development uses a visibly labeled demo catalogue. It co
 ## Configure Supabase
 
 1. Create a Supabase project and copy its project URL and public anon key into `.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Set all `NEXT_PUBLIC_*` variables before building because Next.js bundles them into the browser app.
-2. For a new database, run [the standalone catalogue schema](./supabase/fresh_catalogue_schema.sql). For a database created with the earlier catalogue schema, run [the importer schema upgrade](./supabase/migrations/202610260001_import_catalogue_schema.sql) instead. Then run [the localized category seed](./supabase/store_categories.sql) in the Supabase SQL editor. Do not run the fresh schema and legacy migrations together. These SQL files create the schema and category rows only; products are loaded separately.
+2. For an empty database, run [the fresh catalogue schema](./supabase/fresh_catalogue_schema.sql), then run [the category and color seed](./supabase/store_categories.sql) in the Supabase SQL editor. This seeds the fixed color list used by the dashboard and CSV importer; products are loaded separately. The older `202610260001_import_catalogue_schema.sql` is a historical schema upgrade and does not create the current normalized image/color schema. Do not run it for a fresh setup or combine it with the fresh schema.
 3. Create the store owner's account in Supabase Auth. Disable public sign-up.
 4. In the Supabase SQL editor, mark only the intended owner as a store manager. Replace the placeholder email before running:
 
@@ -33,7 +33,7 @@ Without Supabase, local development uses a visibly labeled demo catalogue. It co
    ```
 
    Verify exactly one intended user was updated. `app_metadata` is server-managed; do not grant the browser a service-role key. RLS and Storage policies independently enforce this owner claim.
-5. Add products in `/admin` individually or upload the product CSV. The owner-authenticated server import validates rows against categories in the database, maps recognized Google/Facebook product taxonomies to the six store categories, imports indexed additional-image columns, and groups matching color rows into product options. Rows without a recognized category are skipped rather than assigned a default. Only whole MAD prices from 10 to 300 are accepted.
+5. Add products in `/admin` individually or upload the product CSV. The dashboard chooses colors from the seeded fixed color list and lets you manage general and color-specific image groups. The owner-authenticated CSV import validates categories against the database, maps recognized Google/Facebook product taxonomies to the six store categories, imports indexed additional-image columns, and groups matching color rows into color options. CSV colors must match the seeded registry by ID, localized name, or alias; unknown colors are reported. Rows without a recognized category are skipped rather than assigned a default. Only whole MAD prices from 10 to 300 are accepted.
 6. To browse public Google Drive image folders from the product form, enable the Google Drive API and set `GOOGLE_DRIVE_API_KEY` as a server-only environment variable. Restrict the key to the Drive API and keep it out of `NEXT_PUBLIC_*` variables. Share the image folder for public link access; Drive is contacted only when the signed-in owner clicks **Browse folder** in `/admin`. The folder and its direct subfolders are shown as a tree, and selecting one adds image links from that folder and one subfolder level to the form. The product is written to Supabase only when **Save product** is clicked.
 7. Verify the store's direct WhatsApp number, then set `NEXT_PUBLIC_WHATSAPP_NUMBER` to its international digits only (for example `212...`, without `+` or spaces). The app deliberately does not guess the recipient.
 8. Configure `NEXT_PUBLIC_SITE_URL` to the final HTTPS origin. Confirm the actual delivery service areas and prices before publishing them. Until configured, checkout asks the store to confirm delivery and does not show a fabricated total.
@@ -56,7 +56,7 @@ pnpm build      # Production build
 pnpm start      # Serve a production build
 ```
 
-Customer contact and address details are not stored by this app. The browser keeps only cart product/variant IDs and quantities. Opening WhatsApp is only a handoff; the customer must send the message, and the store manually confirms stock and final delivery details.
+Customer contact and address details are not stored by this app. The browser keeps only cart product/color IDs and quantities. Opening WhatsApp is only a handoff; the customer must send the message, and the store manually confirms stock and final delivery details.
 
 ## Project documentation
 

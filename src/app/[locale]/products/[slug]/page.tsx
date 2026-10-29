@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ProductActions } from "@/components/product-actions";
-import { ProductGallery } from "@/components/product-gallery";
-import { findCategory, formatPrice, getProducts, isProductAvailable, productImageUrls } from "@/lib/catalog";
+import { ProductConfigurator } from "@/components/product-configurator";
+import { findCategory, getProducts, isProductAvailable, productImageUrls } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
@@ -30,26 +29,25 @@ export default async function ProductPage({ params }: { params: { locale: Locale
   if (!product) notFound();
   const copy = getCopy(params.locale);
   const category = findCategory(product.categoryId);
-  const images = productImageUrls(product);
   return (
     <section className="section product-detail">
       {demo && <div className="site-notice">{copy.demoNotice}</div>}
-      <ProductGallery
-        images={images}
-        alt={localized(product.name, params.locale)}
+      <ProductConfigurator
+        product={product}
+        locale={params.locale}
         accent={category?.accent ?? "rose"}
-        sizes="(max-width: 640px) 88vw, 45vw"
         fallback={category?.icon ?? "♡"}
-        imageLabel={copy.productImage}
-        previousLabel={copy.previousImage}
-        nextLabel={copy.nextImage}
-      />
-      <div className="detail-info"><div className="breadcrumbs"><Link href={`/${params.locale}`}>{copy.home}</Link><span>/</span><Link href={`/${params.locale}/catalog`}>{copy.catalog}</Link><span>/</span>{category && localized(category.name, params.locale)}</div>
-        <span className="eyebrow">{category && localized(category.name, params.locale)}</span><h1>{localized(product.name, params.locale)}</h1><strong className="detail-price">{formatPrice(product.priceMad, params.locale)}</strong><p className="detail-description">{localized(product.description, params.locale)}</p>
-        <div className="stock-line"><span className={isProductAvailable(product) ? "stock-dot" : "stock-dot unavailable"} />{isProductAvailable(product) ? copy.inStock : copy.outOfStock}</div>
-        <ProductActions product={product} locale={params.locale} />
-        <div className="detail-notes"><p>♡ {copy.deliveryText}</p><p>✦ {copy.orderNotice}</p></div>
-      </div>
+        details={
+          <>
+            <p className="detail-description">{localized(product.description, params.locale)}</p>
+            <div className="stock-line"><span className={isProductAvailable(product) ? "stock-dot" : "stock-dot unavailable"} />{isProductAvailable(product) ? copy.inStock : copy.outOfStock}</div>
+            <div className="detail-notes"><p>♡ {copy.deliveryText}</p><p>✦ {copy.orderNotice}</p></div>
+          </>
+        }
+      >
+        <div className="breadcrumbs"><Link href={`/${params.locale}`}>{copy.home}</Link><span>/</span><Link href={`/${params.locale}/catalog`}>{copy.catalog}</Link><span>/</span>{category && localized(category.name, params.locale)}</div>
+        <span className="eyebrow">{category && localized(category.name, params.locale)}</span><h1>{localized(product.name, params.locale)}</h1>
+      </ProductConfigurator>
     </section>
   );
 }

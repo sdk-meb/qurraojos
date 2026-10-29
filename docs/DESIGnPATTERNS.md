@@ -2,9 +2,9 @@
 
 These patterns describe the current QurraOjos MVP. Keep the implementation lightweight and avoid features that turn a WhatsApp request into a false promise of a confirmed order.
 
-## Product and variant model
+## Product and color model
 
-Use a stable product ID and unique URL slug. Store localized product/category copy, an integer MAD price, explicit availability, optional image URLs, feed metadata, and a list of explicit variants. Each purchasable size/color combination must be represented as its own option; never infer a cross-product matrix. Validate IDs, slug, non-negative integer price, image URLs, and variant JSON at the database/form boundary. The owner CSV uploader parses product rows directly; SQL migrations update schema only.
+Use a stable product ID and unique URL slug. Store localized product/category copy, an integer MAD price, explicit availability, feed metadata, and color options that reference the fixed `colors` registry. The admin does not create arbitrary color names or size variants. Keep image URLs only in `product_images`, one URL per row; null `color_option_id` denotes a product-wide image and a populated ID denotes a color-specific image. Validate slugs, color registry references, image URLs, and whole-dirham prices at the database/form boundary. The owner CSV uploader parses product rows directly; SQL scripts update schema/reference data only.
 
 The browser cart references catalogue IDs only. Product names, availability, and prices are re-read from the current catalogue. Invalid, missing, and out-of-stock entries are surfaced and must be removed or corrected before a request can be created.
 
@@ -21,9 +21,9 @@ The browser cart references catalogue IDs only. Product names, availability, and
 
 Do not provide public admin registration. Provision the owner in Supabase Auth and assign the `store_owner` boolean in server-managed `app_metadata`. Database write policies and Storage write policies independently check this claim. Do not use the Supabase service-role key in browser or server-rendered app bundles.
 
-Allow a small, image-only upload with the bucket's file size and MIME type limits. Product image URLs are public read-only; uploads and mutations are owner-only. Image links must return image content directly; normalize Google Drive sharing links to its `lh3.googleusercontent.com/d/{fileId}=w1600` image URL and require the file to be accessible to anyone with the link. Never accept executable or arbitrary files as product media.
+Allow a small, image-only upload with the bucket's file size and MIME type limits. Product image URLs are public read-only; uploads and mutations are owner-only. Keep all general and color-specific images in `product_images`; localized color names, availability, and optional price live in `product_color_options`, which references the fixed `colors` registry. Do not duplicate image URLs on products/options or encode attributes into URL strings. Image links must return image content directly; normalize Google Drive sharing links to its `lh3.googleusercontent.com/d/{fileId}=w1600` image URL and require the file to be accessible to anyone with the link. Never accept executable or arbitrary files as product media.
 
-The owner-only admin form may browse a public Google Drive folder on explicit click. Keep its API key server-only, validate the owner session on the route, and do not fetch folder contents while rendering the admin page. Load one folder level per navigation click so folder browsing can continue at any depth without eager recursive fetches. The product image manager may add, remove, and reorder image links in the unsaved form; only the normal product-save action writes those links to Supabase. Removing a link does not delete the source file. Drive file/folder mutations are out of scope unless a separately authorized Google OAuth integration is added.
+The owner-only admin form may browse a public Google Drive folder on explicit click. Keep its API key server-only, validate the owner session on the route, and do not fetch folder contents while rendering the admin page. Load one folder level per navigation click so folder browsing can continue at any depth without eager recursive fetches. The product image manager targets a selected fixed color image set or the product-wide fallback set. Only the normal product-save action writes those edits to Supabase. Removing a link does not delete the source file. Drive file/folder mutations are out of scope unless a separately authorized Google OAuth integration is added.
 
 ## Localization and accessibility
 
