@@ -453,11 +453,12 @@ export function AdminDashboard() {
     setBusy(false);
   }
 
-  async function browseDriveFolder(
+async function browseDriveFolder(
     folderLink?: string,
     folderId?: string,
     resourceKey?: string,
     ancestors: DriveFolderNode[] = [],
+    maxDepth: number = 1,
   ) {
     if (!session || session.user.app_metadata?.store_owner !== true) {
       setStatus(labels.adminDenied);
@@ -473,7 +474,7 @@ export function AdminDashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(folderLink ? { folderUrl: folderLink } : { folderId, resourceKey }),
+        body: JSON.stringify(folderLink ? { folderUrl: folderLink, maxDepth } : { folderId, resourceKey, maxDepth }),
       });
       const result = await response.json() as { folder?: DriveFolderNode; error?: string };
       if (!response.ok || !result.folder) {
@@ -627,8 +628,8 @@ export function AdminDashboard() {
                   <div className="file-manager-grid">
                     <section className="drive-browser" aria-label={labels.driveContents}>
                       <div className="drive-folder-picker">
-                        <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label>
-                        <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => void browseDriveFolder(driveFolderLink.trim())}>{labels.driveBrowse}</button>
+                        <label className="field"><span>{labels.driveFolderLink}</span><input type="url" dir="ltr" placeholder="https://drive.google.com/drive/folders/..." value={driveFolderLink} onChange={(event) => setDriveFolderLink(event.target.value)} disabled={busy} /></label><label className="field"><span>Max Depth</span><input   type="number"   id="maxDepthInput"  min="1"   max="10"   defaultValue="1"  disabled={busy} /></label>
+                        <button className="button button-light" type="button" disabled={busy || !driveFolderLink.trim()} onClick={() => { const maxDepth = Math.max(1, Math.min(parseInt((document.getElementById('maxDepthInput') as HTMLInputElement)?.value || '1'), 10));void browseDriveFolder(driveFolderLink.trim(), undefined, undefined, [], maxDepth);}}>{labels.driveBrowse}</button>
                       </div>
                       {drivePath.length > 0 && <nav className="drive-breadcrumbs" aria-label={labels.driveContents}>
                         {drivePath.map((folder, index) => <span key={folder.id}>
