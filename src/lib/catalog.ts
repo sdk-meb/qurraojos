@@ -3,11 +3,36 @@ import type { Locale } from "@/lib/locale";
 import { normalizeImageUrl } from "@/lib/image-url";
 
 export type LocalizedText = Record<Locale, string>;
+export type ProductImageRecord = {
+  id?: string;
+  url: string;
+  sortOrder: number;
+};
 export type ProductVariant = {
   id: string;
   label: LocalizedText;
   available: boolean;
   kind?: "color" | "size";
+};
+export type Color = {
+  id: string;
+  label: LocalizedText;
+  hexColor: string;
+  aliases: string[];
+  sortOrder: number;
+};
+export type ProductColorOption = {
+  id?: string;
+  feedItemId?: string | null;
+  colorKey: string;
+  label: LocalizedText;
+  hexColor: string;
+  available: boolean;
+  priceMad?: number | null;
+  images: ProductImageRecord[];
+  sourceTitle?: string | null;
+  sourceDescription?: string | null;
+  sortOrder: number;
 };
 export type Category = {
   id: string;
@@ -24,17 +49,15 @@ export type Product = {
   description: LocalizedText;
   priceMad: number;
   availability: "in-stock" | "out-of-stock";
-  imageUrl?: string | null;
-  imageUrls?: string[];
+  images?: ProductImageRecord[];
   feedItemId?: string | null;
   brand?: string | null;
   condition?: string | null;
-  productUrl?: string | null;
   regularPriceMad?: number | null;
   salePriceMad?: number | null;
   quantityToSell?: number | null;
   feedAttributes?: Record<string, string>;
-  variants: ProductVariant[];
+  colorOptions?: ProductColorOption[];
 };
 
 export const categories: Category[] = [
@@ -47,13 +70,17 @@ export const categories: Category[] = [
 ];
 
 const text = (ar: string, fr: string, en: string, es: string): LocalizedText => ({ ar, fr, en, es });
-const sizeVariants = [
-  { id: "0-6m", label: text("٠–٦ أشهر", "0–6 mois", "0–6 months", "0–6 meses"), available: true },
-  { id: "6-12m", label: text("٦–١٢ شهراً", "6–12 mois", "6–12 months", "6–12 meses"), available: true },
+const sizeVariants: ProductVariant[] = [
+  { id: "0-6m", label: text("٠–٦ أشهر", "0–6 mois", "0–6 months", "0–6 meses"), available: true, kind: "size" },
+  { id: "6-12m", label: text("٦–١٢ شهراً", "6–12 mois", "6–12 months", "6–12 meses"), available: true, kind: "size" },
 ];
 const colors = [
-  { id: "cream", label: text("عاجي", "Écru", "Cream", "Crema"), available: true, kind: "color" as const },
+  { id: "cream", label: text("كريمي", "Écru", "Cream", "Crema"), available: true, kind: "color" as const },
   { id: "sage", label: text("أخضر هادئ", "Vert sauge", "Sage", "Verde salvia"), available: true, kind: "color" as const },
+];
+const demoColors: Color[] = [
+  { id: "cream", label: text("كريمي", "Écru", "Cream", "Crema"), hexColor: "#F3E9D2", aliases: [], sortOrder: 5 },
+  { id: "sage", label: text("أخضر هادئ", "Vert sauge", "Sage", "Verde salvia"), hexColor: "#A8B49A", aliases: [], sortOrder: 13 },
 ];
 const demoCategoryMap: Record<string, string> = {
   "birth-gifts": "nursery-sleep",
@@ -62,7 +89,8 @@ const demoCategoryMap: Record<string, string> = {
   "baby-supplies": "bath-skincare-health",
 };
 
-export const demoProducts: Product[] = ([
+type DemoProduct = Omit<Product, "images" | "colorOptions"> & { variants: ProductVariant[] };
+const demoRecords: DemoProduct[] = ([
   { id: "demo-01", slug: "newborn-gift-set", categoryId: "nursery-sleep", name: text("طقم هدية للمولود", "Coffret cadeau bébé", "Newborn gift set", "Set de regalo para bebé"), description: text("طقم تجريبي لطيف لاستقبال المولود. يُرجى استبدال الوصف والصورة قبل الإطلاق.", "Exemple de coffret de naissance. Remplacez le descriptif et la photo avant lancement.", "Demo newborn gift set. Replace this description and image before launch.", "Set de regalo de muestra. Sustituye descripción e imagen antes del lanzamiento."), priceMad: 180, availability: "in-stock", variants: colors },
   { id: "demo-02", slug: "soft-baby-blanket", categoryId: "birth-gifts", name: text("بطانية ناعمة", "Couverture douce", "Soft baby blanket", "Manta suave"), description: text("بطانية تجريبية ناعمة. تحقق من الخامة والمقاس قبل البيع.", "Couverture de démonstration. Vérifiez la matière et la taille.", "Sample blanket. Confirm material and dimensions before sale.", "Manta de muestra. Confirma material y medidas antes de vender."), priceMad: 120, availability: "in-stock", variants: colors },
   { id: "demo-03", slug: "welcome-baby-box", categoryId: "birth-gifts", name: text("علبة ترحيب بالمولود", "Boîte bienvenue bébé", "Welcome baby box", "Caja bienvenida bebé"), description: text("اقتراح تجريبي لهدية المولود الجديد.", "Suggestion de coffret cadeau de démonstration.", "Demo newborn gift box idea.", "Idea de caja de regalo de muestra."), priceMad: 250, availability: "in-stock", variants: [] },
@@ -75,9 +103,25 @@ export const demoProducts: Product[] = ([
   { id: "demo-10", slug: "feeding-bottle", categoryId: "baby-supplies", name: text("قارورة رضاعة", "Biberon", "Feeding bottle", "Biberón"), description: text("مثال تجريبي. تحققي من السعة والخامة ومعايير السلامة.", "Exemple démo. Vérifiez capacité, matière et sécurité.", "Demo item. Confirm capacity, material and safety.", "Ejemplo de muestra. Confirma capacidad, material y seguridad."), priceMad: 35, availability: "in-stock", variants: [] },
   { id: "demo-11", slug: "changing-mat", categoryId: "baby-supplies", name: text("مفرش تغيير محمول", "Matelas à langer nomade", "Portable changing mat", "Cambiador portátil"), description: text("مفرش تجريبي للعناية اليومية.", "Tapis de démonstration pour le quotidien.", "Demo changing mat for everyday care.", "Cambiador de muestra para el día a día."), priceMad: 75, availability: "in-stock", variants: colors },
   { id: "demo-12", slug: "baby-care-organizer", categoryId: "baby-supplies", name: text("منظم مستلزمات الرضيع", "Organisateur bébé", "Baby care organizer", "Organizador para bebé"), description: text("مثال تجريبي — تحققي من المقاسات والمحتويات قبل الإطلاق.", "Exemple démo — vérifiez dimensions et contenu.", "Demo item — verify size and contents before launch.", "Ejemplo de muestra: verifica medidas y contenido."), priceMad: 145, availability: "in-stock", variants: [] },
- ] satisfies Product[]).map((product) => ({
+ ] satisfies DemoProduct[]);
+
+export const demoProducts: Product[] = demoRecords.map(({ variants, ...product }) => ({
   ...product,
   categoryId: demoCategoryMap[product.categoryId] ?? product.categoryId,
+  images: [],
+  colorOptions: variants
+    .filter((variant) => variant.kind === "color")
+    .flatMap((variant) => {
+      const color = demoColors.find((item) => item.id === variant.id);
+      return color ? [{
+        colorKey: color.id,
+        label: color.label,
+        hexColor: color.hexColor,
+        available: variant.available,
+        images: [],
+        sortOrder: color.sortOrder,
+      }] : [];
+    }),
 }));
 
 export function hasSupabaseConfig() {
@@ -100,12 +144,6 @@ export function getSupabase() {
 }
 
 export function productFromRow(row: Record<string, unknown>): Product {
-  const storedImageUrls = Array.isArray(row.image_urls)
-    ? row.image_urls.filter((imageUrl): imageUrl is string => typeof imageUrl === "string").map(normalizeImageUrl)
-    : [];
-  const rawImageUrl = (row.image_url as string | null) ?? storedImageUrls[0] ?? null;
-  const imageUrl = rawImageUrl ? normalizeImageUrl(rawImageUrl) : null;
-  const imageUrls = storedImageUrls.length ? storedImageUrls : imageUrl ? [imageUrl] : [];
   const feedAttributes = row.feed_attributes && typeof row.feed_attributes === "object" && !Array.isArray(row.feed_attributes)
     ? row.feed_attributes as Record<string, string>
     : {};
@@ -117,18 +155,80 @@ export function productFromRow(row: Record<string, unknown>): Product {
     description: row.description as LocalizedText,
     priceMad: Number(row.price_mad),
     availability: row.available ? "in-stock" : "out-of-stock",
-    imageUrl,
-    imageUrls,
+    images: [],
     feedItemId: (row.feed_item_id as string | null) ?? null,
     brand: (row.brand as string | null) ?? null,
     condition: (row.condition as string | null) ?? null,
-    productUrl: (row.product_url as string | null) ?? null,
     regularPriceMad: (row.regular_price_mad as number | null) ?? null,
     salePriceMad: (row.sale_price_mad as number | null) ?? null,
     quantityToSell: (row.quantity_to_sell_on_facebook as number | null) ?? null,
     feedAttributes,
-    variants: (row.variants as ProductVariant[] | null) ?? [],
   };
+}
+
+export function colorFromRow(row: Record<string, unknown>): Color {
+  const label = row.label && typeof row.label === "object" && !Array.isArray(row.label)
+    ? row.label as LocalizedText
+    : text("", "", "", "");
+  return {
+    id: String(row.id),
+    label,
+    hexColor: String(row.hex_color),
+    aliases: Array.isArray(row.aliases)
+      ? row.aliases.filter((alias): alias is string => typeof alias === "string")
+      : [],
+    sortOrder: Number(row.sort_order) || 0,
+  };
+}
+
+export function productFromRows(
+  productRows: Record<string, unknown>[],
+  colorRows: Record<string, unknown>[],
+  imageRows: Record<string, unknown>[],
+  colorRowsById: Color[],
+): Product[] {
+  const colorsById = new Map(colorRowsById.map((color) => [color.id, color]));
+  const imagesByScope = new Map<string, ProductImageRecord[]>();
+  for (const row of imageRows) {
+    const scope = `${String(row.product_id)}:${typeof row.color_option_id === "string" ? row.color_option_id : "general"}`;
+    const image: ProductImageRecord = {
+      id: String(row.id),
+      url: normalizeImageUrl(String(row.image_url)),
+      sortOrder: Number(row.sort_order) || 0,
+    };
+    imagesByScope.set(scope, [...(imagesByScope.get(scope) ?? []), image]);
+  }
+  const colorsByProduct = new Map<string, ProductColorOption[]>();
+  for (const row of colorRows) {
+    const color = colorsById.get(String(row.color_id));
+    if (!color) continue;
+    const productId = String(row.product_id);
+    const optionId = String(row.id);
+    const colorOption: ProductColorOption = {
+      id: optionId,
+      feedItemId: (row.feed_item_id as string | null) ?? null,
+      colorKey: color.id,
+      label: color.label,
+      hexColor: color.hexColor,
+      available: row.available === true,
+      priceMad: (row.price_mad as number | null) ?? null,
+      images: (imagesByScope.get(`${productId}:${optionId}`) ?? [])
+        .sort((left, right) => left.sortOrder - right.sortOrder),
+      sourceTitle: (row.source_title as string | null) ?? null,
+      sourceDescription: (row.source_description as string | null) ?? null,
+      sortOrder: Number(row.sort_order) || 0,
+    };
+    colorsByProduct.set(productId, [...(colorsByProduct.get(productId) ?? []), colorOption]);
+  }
+
+  return productRows.map((row) => {
+    const product = productFromRow(row);
+    product.colorOptions = (colorsByProduct.get(product.id) ?? [])
+      .sort((left, right) => left.sortOrder - right.sortOrder);
+    product.images = (imagesByScope.get(`${product.id}:general`) ?? [])
+      .sort((left, right) => left.sortOrder - right.sortOrder);
+    return product;
+  });
 }
 
 export async function getProducts(): Promise<{ products: Product[]; demo: boolean; configured: boolean; error?: boolean }> {
@@ -138,12 +238,29 @@ export async function getProducts(): Promise<{ products: Product[]; demo: boolea
       ? { products: demoProducts, demo: true, configured: false }
       : { products: [], demo: false, configured: false };
   }
-  const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-  if (error) {
-    console.error("Unable to load the public catalogue:", error.message);
+  const [productsResult, colorsResult, imagesResult, colorRegistryResult] = await Promise.all([
+    supabase.from("products").select("*").order("created_at", { ascending: false }),
+    supabase.from("product_color_options").select("*").order("sort_order", { ascending: true }),
+    supabase.from("product_images").select("*").order("sort_order", { ascending: true }),
+    supabase.from("colors").select("*").eq("active", true).order("sort_order", { ascending: true }),
+  ]);
+  if (productsResult.error || colorsResult.error || imagesResult.error || colorRegistryResult.error) {
+    console.error(
+      "Unable to load the public catalogue:",
+      productsResult.error?.message ?? colorsResult.error?.message ?? imagesResult.error?.message ?? colorRegistryResult.error?.message,
+    );
     return { products: [], demo: false, configured: true, error: true };
   }
-  return { products: (data ?? []).map((row) => productFromRow(row as Record<string, unknown>)), demo: false, configured: true };
+  return {
+    products: productFromRows(
+      (productsResult.data ?? []) as Record<string, unknown>[],
+      (colorsResult.data ?? []) as Record<string, unknown>[],
+      (imagesResult.data ?? []) as Record<string, unknown>[],
+      (colorRegistryResult.data ?? []).map((row) => colorFromRow(row as Record<string, unknown>)),
+    ),
+    demo: false,
+    configured: true,
+  };
 }
 
 export function findCategory(id: string) {
@@ -152,14 +269,34 @@ export function findCategory(id: string) {
 
 export function productImageUrls(product: Product) {
   return Array.from(new Set([
-    ...(product.imageUrls ?? []).map(normalizeImageUrl),
-    ...(product.imageUrl ? [normalizeImageUrl(product.imageUrl)] : []),
+    ...(product.images ?? []).map(({ url }) => normalizeImageUrl(url)),
+    ...(product.colorOptions ?? []).flatMap((option) => option.images.map(({ url }) => normalizeImageUrl(url))),
   ]));
+}
+
+export function productImageUrlsForVariant(product: Product, variantId: string) {
+  const colorOption = (product.colorOptions ?? []).find((option) => option.colorKey === variantId);
+  if (colorOption) {
+    return colorOption.images.length
+      ? colorOption.images.map(({ url }) => normalizeImageUrl(url))
+      : (product.images ?? []).map(({ url }) => normalizeImageUrl(url));
+  }
+  return productImageUrls(product);
+}
+
+export function productPriceForVariant(product: Product, variantId: string) {
+  const colorOption = (product.colorOptions ?? []).find((option) => option.colorKey === variantId);
+  return colorOption?.priceMad ?? product.priceMad;
+}
+
+export function isVariantAvailable(product: Product, variantId: string) {
+  const colorOption = (product.colorOptions ?? []).find((option) => option.colorKey === variantId);
+  return colorOption ? colorOption.available : (product.colorOptions?.length ?? 0) === 0 && variantId === "default";
 }
 
 export function isProductAvailable(product: Product) {
   return product.availability === "in-stock" &&
-    (product.variants.length === 0 || product.variants.some((variant) => variant.available));
+    ((product.colorOptions?.length ?? 0) === 0 || product.colorOptions!.some((option) => option.available));
 }
 
 export function formatPrice(amount: number, locale: Locale) {

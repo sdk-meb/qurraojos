@@ -78,7 +78,7 @@ export function CatalogFilters({
       </div>
       {colors.length > 0 && (
         <label className="color-filter">
-          <span>{copy.chooseVariant}</span>
+          <span>{copy.chooseColor}</span>
           <select name="color" value={color ?? ""} onChange={(event) => selectColor(event.target.value)}>
             <option value="">{copy.all}</option>
             {colors.map((option) => (

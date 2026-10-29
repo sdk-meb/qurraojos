@@ -157,10 +157,16 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+
   const reference = getFolderReference(body);
   if (!reference) {
     return NextResponse.json({ error: "Enter a valid Google Drive folder link or select a folder." }, { status: 400 });
   }
+
+  // Extract maxDepth from request body with default value of 1
+  const maxDepth = typeof body === 'object' && body !== null && 'maxDepth' in body 
+    ? Math.max(1, Math.min(Number(body.maxDepth), 10)) // Clamp between 1 and 10
+    : 1;
 
   try {
     const metadataUrl = new URL(`${DRIVE_API_URL}/files/${encodeURIComponent(reference.folderId)}`);
@@ -178,7 +184,7 @@ export async function POST(request: Request) {
       metadata.name,
       apiKey,
       metadata.resourceKey ?? reference.resourceKey,
-      1,
+      maxDepth, // Pass maxDepth instead of hardcoded 1
     );
     return NextResponse.json({ folder });
   } catch (error) {
