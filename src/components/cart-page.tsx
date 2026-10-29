@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { formatPrice, isProductAvailable, productImageUrls, type Product } from "@/lib/catalog";
+import { formatPrice, isProductAvailable, isVariantAvailable, productImageUrlsForVariant, productPriceForVariant, type Product } from "@/lib/catalog";
 import { lookupDeliveryFee } from "@/lib/delivery";
 import { useCart } from "@/lib/cart-context";
 import { getCopy, localized, type Locale } from "@/lib/locale";
@@ -16,17 +16,22 @@ export function CartPage({ locale, products, demo, catalogError }: { locale: Loc
   const { fee: deliveryFee, invalidConfiguration } = lookupDeliveryFee(form.city);
   const cartLines = useMemo(() => items.map((item) => {
     const product = products.find((entry) => entry.id === item.productId);
-    const variant = product?.variants.find((entry) => entry.id === item.variantId);
-    return { item, product, variant };
+    const colorOption = product?.colorOptions?.find((option) => option.colorKey === item.variantId);
+    return {
+      item,
+      product,
+      colorOption,
+      priceMad: product ? productPriceForVariant(product, item.variantId) : 0,
+    };
   }), [items, products]);
   const validLines = cartLines.filter((line): line is typeof line & { product: Product } => Boolean(
     line.product &&
     isProductAvailable(line.product) &&
-    (line.product.variants.length === 0
+    ((line.product.colorOptions?.length ?? 0) === 0
       ? line.item.variantId === "default"
-      : line.variant?.available),
+      : isVariantAvailable(line.product, line.item.variantId)),
   ));
-  const subtotal = validLines.reduce((sum, line) => sum + line.product.priceMad * line.item.quantity, 0);
+  const subtotal = validLines.reduce((sum, line) => sum + line.priceMad * line.item.quantity, 0);
   const configuredNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER?.trim() ?? "";
   const normalizedWhatsAppNumber = /^[+\d()\s-]+$/.test(configuredNumber)
     ? configuredNumber.replace(/\D/g, "")
@@ -57,8 +62,8 @@ export function CartPage({ locale, products, demo, catalogError }: { locale: Loc
       setError(copy.unavailableItems);
       return;
     }
-    const lines = validLines.map(({ item, product, variant }, index) =>
-      `${index + 1}. ${item.quantity} x ${localized(product.name, locale)}${variant ? ` — ${localized(variant.label, locale)}` : ""} — ${formatPrice(product.priceMad * item.quantity, locale)}`,
+    const lines = validLines.map(({ item, product, colorOption }, index) =>
+      `${index + 1}. ${item.quantity} x ${localized(product.name, locale)}${colorOption ? ` — ${localized(colorOption.label, locale)}` : ""} — ${formatPrice(productPriceForVariant(product, item.variantId) * item.quantity, locale)}`,
     );
     const deliveryText = deliveryFee === null ? copy.unknownDelivery : formatPrice(deliveryFee, locale);
     const totalText = deliveryFee === null ? copy.unknownDelivery : formatPrice(subtotal + deliveryFee, locale);
@@ -89,10 +94,10 @@ export function CartPage({ locale, products, demo, catalogError }: { locale: Loc
       {demo && <div className="site-notice">{copy.demoNotice}</div>}
       <div className="cart-heading"><span className="eyebrow">QURRAOJOS · {copy.cart}</span><h1>{copy.cart}</h1></div>
       <div className="cart-layout"><div className="cart-lines">
-        {cartLines.map(({ item, product, variant }) => product ? (
+        {cartLines.map(({ item, product, colorOption }) => product ? (
           <article className="cart-line" key={`${item.productId}:${item.variantId}`}>
-            <div className="cart-line-art"><ProductImage sources={productImageUrls(product)} alt="" sizes="75px" fallback={product.name.ar.slice(0, 1)} /></div>
-            <div className="cart-line-info"><h2>{localized(product.name, locale)}</h2>{variant && <small>{localized(variant.label, locale)}</small>}<strong>{formatPrice(product.priceMad * item.quantity, locale)}</strong>{(!isProductAvailable(product) || (product.variants.length > 0 && !variant?.available)) && <small className="error-text">{copy.outOfStock}</small>}</div>
+            <div className="cart-line-art"><ProductImage sources={productImageUrlsForVariant(product, item.variantId)} alt="" sizes="75px" fallback={product.name.ar.slice(0, 1)} /></div>
+            <div className="cart-line-info"><h2>{localized(product.name, locale)}</h2>{colorOption && <small>{localized(colorOption.label, locale)}</small>}<strong>{formatPrice(productPriceForVariant(product, item.variantId) * item.quantity, locale)}</strong>{(!isProductAvailable(product) || ((product.colorOptions?.length ?? 0) > 0 && !isVariantAvailable(product, item.variantId))) && <small className="error-text">{copy.outOfStock}</small>}</div>
             <div className="quantity-control"><button aria-label="−" onClick={() => item.quantity > 1 ? setQuantity(item.productId, item.variantId, item.quantity - 1) : remove(item.productId, item.variantId)}>−</button><span>{item.quantity}</span><button aria-label="+" onClick={() => setQuantity(item.productId, item.variantId, item.quantity + 1)}>+</button></div>
             <button className="remove-link" onClick={() => remove(item.productId, item.variantId)}>{copy.delete}</button>
           </article>

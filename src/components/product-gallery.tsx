@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ProductImage } from "@/components/product-image";
+import { localized, type Locale } from "@/lib/locale";
+import type { ProductColorOption } from "@/lib/catalog";
 
 export function ProductGallery({
   images,
@@ -12,6 +14,11 @@ export function ProductGallery({
   imageLabel,
   previousLabel,
   nextLabel,
+  colorOptions = [],
+  selectedColorKey,
+  onSelectColor,
+  colorLabel,
+  locale,
 }: {
   images: string[];
   alt: string;
@@ -21,6 +28,11 @@ export function ProductGallery({
   imageLabel: string;
   previousLabel: string;
   nextLabel: string;
+  colorOptions?: ProductColorOption[];
+  selectedColorKey?: string;
+  onSelectColor?: (colorKey: string) => void;
+  colorLabel?: string;
+  locale?: Locale;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const imageKey = images.join("\u0000");
@@ -67,6 +79,26 @@ export function ProductGallery({
           </>
         )}
       </div>
+      {colorOptions.length > 0 && onSelectColor && locale && (
+        <div className="product-color-options" role="group" aria-label={colorLabel}>
+          <span>{colorLabel}</span>
+          <div>
+            {colorOptions.map((option) => (
+              <button
+                className={`product-color-option${option.colorKey === selectedColorKey ? " is-active" : ""}`}
+                key={option.colorKey}
+                type="button"
+                disabled={!option.available}
+                aria-pressed={option.colorKey === selectedColorKey}
+                onClick={() => onSelectColor(option.colorKey)}
+              >
+                <span className="product-color-swatch" style={{ backgroundColor: option.hexColor }} aria-hidden="true" />
+                {localized(option.label, locale)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {images.length > 1 && (
         <div className="detail-image-thumbnails" role="group" aria-label={imageLabel}>
           {images.map((imageUrl, index) => (

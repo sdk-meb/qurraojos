@@ -12,8 +12,8 @@ export type ProductCsvIssueReason =
   | "invalidQuantity"
   | "invalidCategory"
   | "invalidUrl"
-  | "duplicate"
-  | "tooManyVariants";
+  | "invalidColor"
+  | "duplicate";
 export type ProductCsvIssue = { line: number; reason: ProductCsvIssueReason };
 export type ProductCsvRecord = {
   slug: string;
@@ -22,12 +22,9 @@ export type ProductCsvRecord = {
   description: Record<Locale, string>;
   price_mad: number;
   available: boolean;
-  variants: Array<{ id: string; label: Record<Locale, string>; available: boolean; kind: "color" }>;
   feed_item_id?: string | null;
   brand?: string;
   condition?: string;
-  product_url?: string;
-  image_url?: string | null;
   image_urls?: string[];
   google_product_category?: string;
   fb_product_category?: string;
@@ -41,12 +38,9 @@ export type ProductCsvRecord = {
 export type ProductColorCsvRecord = {
   product_slug: string;
   feed_item_id: string;
-  color: string;
-  color_key: string;
-  label: Record<Locale, string>;
+  color_id: string;
   available: boolean;
   price_mad: number;
-  image_url: string | null;
   image_urls: string[];
   source_title: string;
   source_description: string;
@@ -61,19 +55,6 @@ const categoryIds = new Set([
   "nursery-sleep",
   "gear-safety-toys",
 ]);
-
-const colorTranslations: Record<string, { key: string; en: string; fr: string; es: string }> = {
-  "وردي": { key: "pink", en: "Pink", fr: "Rose", es: "Rosa" },
-  "رمادي": { key: "gray", en: "Gray", fr: "Gris", es: "Gris" },
-  "بيج": { key: "beige", en: "Beige", fr: "Beige", es: "Beige" },
-  "أبيض كريمي": { key: "cream", en: "Cream", fr: "Écru", es: "Crema" },
-  "ابيض كريمي": { key: "cream", en: "Cream", fr: "Écru", es: "Crema" },
-  "أبيض": { key: "white", en: "White", fr: "Blanc", es: "Blanco" },
-  "ابيض": { key: "white", en: "White", fr: "Blanc", es: "Blanco" },
-  "ازرق": { key: "blue", en: "Blue", fr: "Bleu", es: "Azul" },
-  "أزرق": { key: "blue", en: "Blue", fr: "Bleu", es: "Azul" },
-  "فضي": { key: "silver", en: "Silver", fr: "Argenté", es: "Plateado" },
-};
 
 function readCsv(text: string): CsvRow[] {
   const rows: CsvRow[] = [];
@@ -204,22 +185,15 @@ function inferCategory(googleCategory: string, facebookCategory: string) {
   return null;
 }
 
-function localizedColor(color: string): { key: string; label: Record<Locale, string> } {
-  const known = colorTranslations[color.trim().toLowerCase()];
-  let hash = 0x811c9dc5;
-  for (const character of color.trim().toLowerCase()) {
-    hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193);
-  }
-  const fallbackKey = `color-${(hash >>> 0).toString(36)}`;
-  return {
-    key: known?.key ?? fallbackKey,
-    label: {
-      ar: color.trim(),
-      en: known?.en ?? color.trim(),
-      fr: known?.fr ?? color.trim(),
-      es: known?.es ?? color.trim(),
-    },
-  };
+export type ProductCsvColor = { id: string; label: Record<Locale, string>; aliases: string[] };
+
+function findColor(color: string, colors: ProductCsvColor[]) {
+  const normalized = color.trim().toLocaleLowerCase();
+  return colors.find((candidate) =>
+    candidate.id.toLocaleLowerCase() === normalized ||
+    Object.values(candidate.label).some((label) => label.toLocaleLowerCase() === normalized) ||
+    candidate.aliases.some((alias) => alias.toLocaleLowerCase() === normalized),
+  ) ?? null;
 }
 
 function titleWithoutColor(title: string, color: string) {
@@ -231,7 +205,11 @@ function titleWithoutColor(title: string, color: string) {
     .trim() || title.trim();
 }
 
-export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<string> = categoryIds) {
+export function parseProductCsv(
+  text: string,
+  validCategoryIds: ReadonlySet<string> = categoryIds,
+  colors: ProductCsvColor[] = [],
+) {
   const rows = readCsv(text);
   const headerIndex = rows.findIndex(({ values }) => {
     const headers = values.map(normalizeHeader);
@@ -267,8 +245,7 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
     sourceDescription: string;
     sourceId: string;
     color?: string;
-    colorKey?: string;
-    colorLabel?: Record<Locale, string>;
+    colorId?: string;
     colorPrice?: number;
     colorAvailable?: boolean;
     imageUrls: string[];
@@ -299,7 +276,6 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
     const requiredColumns = [
       descriptionColumn,
       availabilityColumn,
-      productUrlColumn,
       imageUrlColumn,
       itemIdColumn,
     ].filter((index) => index >= 0);
@@ -344,19 +320,13 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       continue;
     }
 
-    const productUrl = productUrlColumn >= 0 && values[productUrlColumn].trim()
-      ? parseUrl(values[productUrlColumn])
-      : null;
     const rawImageUrls = [
       ...(imageUrlColumn >= 0 ? values[imageUrlColumn].split(/[;\r\n]+/) : []),
       ...additionalImageColumns.flatMap((index) => values[index].split(/[;\r\n]+/)),
       ...(imageUrlsColumn >= 0 ? values[imageUrlsColumn].split(/[;\r\n]+/) : []),
     ].map((url) => url.trim()).filter(Boolean);
     const imageUrls = rawImageUrls.map(parseUrl);
-    if (
-      (productUrlColumn >= 0 && values[productUrlColumn].trim() && !productUrl) ||
-      imageUrls.some((url) => url === null)
-    ) {
+    if (imageUrls.some((url) => url === null)) {
       issues.push({ line: sourceRow.line, reason: "invalidUrl" });
       continue;
     }
@@ -378,6 +348,11 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       continue;
     }
     const color = colorColumn >= 0 ? values[colorColumn].trim() : "";
+    const colorInfo = color ? findColor(color, colors) : null;
+    if (color && !colorInfo) {
+      issues.push({ line: sourceRow.line, reason: "invalidColor" });
+      continue;
+    }
     const productTitle = titleWithoutColor(title, color);
     const slug = slugify(productTitle);
     const mappedColumns = new Set([
@@ -398,15 +373,13 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       description: { ar: descriptionColumn >= 0 ? values[descriptionColumn].trim() : "", fr: "", en: "", es: "" },
       price_mad: priceMad,
       available: availability === "in stock",
-      variants: [],
       ...(color ? {} : { feed_item_id: sourceId }),
       ...(brandColumn >= 0 && values[brandColumn].trim() ? { brand: values[brandColumn].trim() } : {}),
       ...(condition ? { condition } : {}),
-      ...(productUrl ? { product_url: productUrl } : {}),
       ...(uniqueImageUrls.length
-        ? { image_url: uniqueImageUrls[0], image_urls: uniqueImageUrls }
+        ? { image_urls: uniqueImageUrls }
         : imageUrlColumn >= 0 || additionalImageColumns.length > 0 || imageUrlsColumn >= 0
-          ? { image_url: null, image_urls: [] }
+          ? { image_urls: [] }
           : {}),
       ...(googleCategory ? { google_product_category: googleCategory } : {}),
       ...(facebookCategory ? { fb_product_category: facebookCategory } : {}),
@@ -417,7 +390,6 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       ...(quantity !== null ? { quantity_to_sell_on_facebook: quantity } : {}),
       ...(Object.keys(feedAttributes).length ? { feed_attributes: feedAttributes } : {}),
     };
-    const colorInfo = color ? localizedColor(color) : null;
     parsedRows.push({
       line: sourceRow.line,
       product,
@@ -425,7 +397,7 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       sourceTitle: title,
       sourceDescription: descriptionColumn >= 0 ? values[descriptionColumn].trim() : "",
       sourceId,
-      ...(colorInfo ? { color, colorKey: colorInfo.key, colorLabel: colorInfo.label } : {}),
+      ...(colorInfo ? { color, colorId: colorInfo.id } : {}),
       ...(color ? { colorPrice: priceMad, colorAvailable: availability === "in stock" } : {}),
       imageUrls: uniqueImageUrls,
     });
@@ -449,25 +421,15 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
     duplicateIdRows.forEach(({ line }) => issues.push({ line, reason: "duplicate" }));
     const validRows = group.filter((row) => !duplicateIdRows.includes(row));
     if (!validRows.length) continue;
-    const coloredRows = validRows.filter((row) => row.color && row.colorKey && row.colorLabel);
-    if (coloredRows.length > 8) {
-      validRows.forEach(({ line }) => issues.push({ line, reason: "tooManyVariants" }));
-      continue;
-    }
+    const coloredRows = validRows.filter((row) => row.color && row.colorId);
 
     const first = validRows[0];
-    const mergedImageUrls = Array.from(new Set(validRows.flatMap((row) => row.imageUrls)));
     const uniqueColoredRows = coloredRows.filter((row, index) => {
-      const isDuplicate = coloredRows.findIndex((candidate) => candidate.colorKey === row.colorKey) !== index;
+      const isDuplicate = coloredRows.findIndex((candidate) => candidate.colorId === row.colorId) !== index;
       if (isDuplicate) issues.push({ line: row.line, reason: "duplicate" });
       return !isDuplicate;
     });
-    const mergedVariants = uniqueColoredRows.map((row) => ({
-      id: row.colorKey!,
-      label: row.colorLabel!,
-      available: row.colorAvailable ?? false,
-      kind: "color" as const,
-    }));
+    const generalImageUrls = Array.from(new Set(validRows.filter((row) => !row.color).flatMap((row) => row.imageUrls)));
     const product: ProductCsvRecord = {
       ...first.product,
       name: { ...first.product.name },
@@ -480,12 +442,10 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       available: coloredRows.length
         ? coloredRows.some((row) => row.colorAvailable)
         : first.product.available,
+      image_urls: generalImageUrls,
       ...(uniqueColoredRows.length
         ? {
             feed_item_id: null,
-            variants: mergedVariants,
-            image_url: mergedImageUrls[0] ?? null,
-            image_urls: mergedImageUrls,
           }
         : {}),
     };
@@ -493,12 +453,9 @@ export function parseProductCsv(text: string, validCategoryIds: ReadonlySet<stri
       colorOptions.push({
         product_slug: product.slug,
         feed_item_id: row.sourceId,
-        color: row.color!,
-        color_key: row.colorKey!,
-        label: row.colorLabel!,
+        color_id: row.colorId!,
         available: row.colorAvailable ?? false,
         price_mad: row.colorPrice ?? product.price_mad,
-        image_url: row.imageUrls[0] ?? null,
         image_urls: row.imageUrls,
         source_title: row.sourceTitle,
         source_description: row.sourceDescription,

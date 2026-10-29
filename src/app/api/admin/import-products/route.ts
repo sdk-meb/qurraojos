@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { parseProductCsv, type ProductCsvIssue } from "@/lib/product-csv";
+import { parseProductCsv, type ProductCsvColor, type ProductCsvIssue } from "@/lib/product-csv";
 
 export const dynamic = "force-dynamic";
 
@@ -50,16 +50,23 @@ async function importProducts(request: Request) {
 
   let parsed: ReturnType<typeof parseProductCsv>;
   try {
-    const { data: categoryRows, error: categoryError } = await supabase
-      .from("categories")
-      .select("id");
-    if (categoryError) {
+    const [categoriesResult, colorsResult] = await Promise.all([
+      supabase.from("categories").select("id"),
+      supabase.from("colors").select("id, label, aliases").eq("active", true),
+    ]);
+    if (categoriesResult.error) {
       return NextResponse.json({
-        error: `Could not verify database categories. Apply the catalogue schema and category seed SQL first. ${categoryError.message}`,
+        error: `Could not verify database categories. Apply the fresh catalogue schema and reference data first. ${categoriesResult.error.message}`,
       }, { status: 500 });
     }
-    const categoryIds = new Set((categoryRows ?? []).map(({ id }) => id as string));
-    parsed = parseProductCsv(await file.text(), categoryIds);
+    if (colorsResult.error) {
+      return NextResponse.json({
+        error: `Could not load the fixed color list. Apply the fresh catalogue schema and reference data first. ${colorsResult.error.message}`,
+      }, { status: 500 });
+    }
+    const categoryIds = new Set((categoriesResult.data ?? []).map(({ id }) => id as string));
+    const colors = (colorsResult.data ?? []) as ProductCsvColor[];
+    parsed = parseProductCsv(await file.text(), categoryIds, colors);
   } catch (error) {
     return NextResponse.json({
       error: error instanceof Error ? error.message : "Could not interpret this CSV.",
@@ -75,7 +82,7 @@ async function importProducts(request: Request) {
 
   const { error: productsSchemaError } = await supabase
     .from("products")
-    .select("id, slug, category_id, name, description, price_mad, available, image_url, image_urls, variants, feed_item_id, brand, condition, product_url, google_product_category, fb_product_category, age_group, material, regular_price_mad, sale_price_mad, quantity_to_sell_on_facebook, feed_attributes")
+    .select("id, slug, category_id, name, description, price_mad, available, feed_item_id, brand, condition, google_product_category, fb_product_category, age_group, material, regular_price_mad, sale_price_mad, quantity_to_sell_on_facebook, feed_attributes")
     .limit(0);
   if (productsSchemaError) {
     return NextResponse.json({
@@ -85,11 +92,17 @@ async function importProducts(request: Request) {
 
   const { error: colorsTableError } = await supabase
     .from("product_color_options")
-    .select("id")
+    .select("id, color_id")
     .limit(1);
   if (colorsTableError) {
     return NextResponse.json({
-      error: `The product_color_options table is unavailable. Apply the fresh catalogue schema first. ${colorsTableError.message}`,
+      error: `The color option table is unavailable. Apply the fresh catalogue schema first. ${colorsTableError.message}`,
+    }, { status: 500 });
+  }
+  const { error: imagesTableError } = await supabase.from("product_images").select("id").limit(1);
+  if (imagesTableError) {
+    return NextResponse.json({
+      error: `The product image table is unavailable. Apply the fresh catalogue schema first. ${imagesTableError.message}`,
     }, { status: 500 });
   }
 
@@ -104,15 +117,17 @@ async function importProducts(request: Request) {
 
   const existingBySlug = new Map((existingRows ?? []).map((row) => [row.slug as string, row]));
   const recordsToUpsert = parsed.records.map((record) => {
+    const productRecord = { ...record };
+    delete productRecord.image_urls;
     const existing = existingBySlug.get(record.slug);
-    if (!existing) return record;
+    if (!existing) return productRecord;
     return {
       ...existing,
-      ...record,
+      ...productRecord,
       id: existing.id,
-      name: { ...existing.name, ...record.name },
-      description: { ...existing.description, ...record.description },
-      feed_attributes: { ...existing.feed_attributes, ...record.feed_attributes },
+      name: { ...existing.name, ...productRecord.name },
+      description: { ...existing.description, ...productRecord.description },
+      feed_attributes: { ...existing.feed_attributes, ...productRecord.feed_attributes },
     };
   });
   const { error: productWriteError } = await supabase
@@ -122,35 +137,122 @@ async function importProducts(request: Request) {
     return NextResponse.json({ error: `Product import failed. ${productWriteError.message}` }, { status: 500 });
   }
 
+  const { data: productRows, error: productLookupError } = await supabase
+    .from("products")
+    .select("id, slug")
+    .in("slug", slugs);
+  if (productLookupError) {
+    return NextResponse.json({
+      error: `Products were saved, but their images and colors could not be linked. ${productLookupError.message}`,
+      productsSaved: parsed.records.length,
+    }, { status: 500 });
+  }
+  const productIds = new Map((productRows ?? []).map((row) => [row.slug as string, row.id as string]));
+  const unlinked = parsed.records.find(({ slug }) => !productIds.has(slug));
+  if (unlinked) {
+    return NextResponse.json({
+      error: `Products were saved, but their images could not be linked to ${unlinked.slug}.`,
+      productsSaved: parsed.records.length,
+    }, { status: 500 });
+  }
   if (parsed.colorOptions.length) {
-    const { data: productRows, error: productLookupError } = await supabase
-      .from("products")
-      .select("id, slug")
-      .in("slug", slugs);
-    if (productLookupError) {
-      return NextResponse.json({
-        error: `Products were saved, but their color options could not be linked. ${productLookupError.message}`,
-        productsSaved: parsed.records.length,
-      }, { status: 500 });
-    }
-    const productIds = new Map((productRows ?? []).map((row) => [row.slug as string, row.id as string]));
-    const unlinked = parsed.colorOptions.find(({ product_slug }) => !productIds.has(product_slug));
-    if (unlinked) {
-      return NextResponse.json({
-        error: `Products were saved, but color options could not be linked to ${unlinked.product_slug}.`,
-        productsSaved: parsed.records.length,
-      }, { status: 500 });
-    }
-    const colorRows = parsed.colorOptions.map(({ product_slug, ...color }) => ({
-      ...color,
-      product_id: productIds.get(product_slug)!,
-    }));
+    const colorRows = parsed.colorOptions.map((option) => {
+      const { product_slug, ...color } = option;
+      const colorRow: Record<string, unknown> = { ...color };
+      delete colorRow.image_urls;
+      return { ...colorRow, product_id: productIds.get(product_slug)! };
+    });
     const { error: colorWriteError } = await supabase
       .from("product_color_options")
-      .upsert(colorRows, { onConflict: "product_id,color_key" });
+      .upsert(colorRows, { onConflict: "product_id,color_id" });
     if (colorWriteError) {
       return NextResponse.json({
         error: `Products were saved, but color options could not be imported. ${colorWriteError.message}`,
+        productsSaved: parsed.records.length,
+      }, { status: 500 });
+    }
+  }
+
+  const productIdList = Array.from(productIds.values());
+  const { data: savedOptions, error: savedOptionsError } = await supabase
+    .from("product_color_options")
+    .select("id, product_id, color_id")
+    .in("product_id", productIdList);
+  if (savedOptionsError) {
+    return NextResponse.json({
+      error: `Products were saved, but color images could not be linked. ${savedOptionsError.message}`,
+      productsSaved: parsed.records.length,
+    }, { status: 500 });
+  }
+  const optionIds = new Map((savedOptions ?? []).map((option) => [
+    `${option.product_id}:${option.color_id}`,
+    option.id as string,
+  ]));
+  const expectedImages = new Map<string, { product_id: string; color_option_id: string | null; image_urls: Set<string> }>();
+  const addExpectedImages = (productId: string, optionId: string | null, urls: string[]) => {
+    const scope = `${productId}:${optionId ?? "general"}`;
+    const current = expectedImages.get(scope) ?? {
+      product_id: productId,
+      color_option_id: optionId,
+      image_urls: new Set<string>(),
+    };
+    urls.forEach((url) => current.image_urls.add(url));
+    expectedImages.set(scope, current);
+  };
+  for (const record of parsed.records) {
+    addExpectedImages(productIds.get(record.slug)!, null, record.image_urls ?? []);
+  }
+  for (const option of parsed.colorOptions) {
+    const productId = productIds.get(option.product_slug)!;
+    const optionId = optionIds.get(`${productId}:${option.color_id}`);
+    if (!optionId) {
+      return NextResponse.json({
+        error: `Products were saved, but color images could not be linked to ${option.product_slug}.`,
+        productsSaved: parsed.records.length,
+      }, { status: 500 });
+    }
+    addExpectedImages(productId, optionId, option.image_urls);
+  }
+
+  const imageRows = Array.from(expectedImages.values()).flatMap(({ product_id, color_option_id, image_urls }) =>
+    Array.from(image_urls).map((image_url, sort_order) => ({
+      product_id,
+      color_option_id,
+      image_url,
+      sort_order,
+    })),
+  );
+  if (imageRows.length) {
+    const { error: imageWriteError } = await supabase
+      .from("product_images")
+      .upsert(imageRows, { onConflict: "product_id,color_option_id,image_url" });
+    if (imageWriteError) {
+      return NextResponse.json({
+        error: `Products and colors were saved, but images could not be imported. ${imageWriteError.message}`,
+        productsSaved: parsed.records.length,
+      }, { status: 500 });
+    }
+  }
+  const { data: existingImages, error: existingImagesError } = await supabase
+    .from("product_images")
+    .select("id, product_id, color_option_id, image_url")
+    .in("product_id", productIdList);
+  if (existingImagesError) {
+    return NextResponse.json({
+      error: `Products were saved, but stale images could not be checked. ${existingImagesError.message}`,
+      productsSaved: parsed.records.length,
+    }, { status: 500 });
+  }
+  const staleIds = (existingImages ?? []).filter((image) => {
+    const scope = `${image.product_id}:${image.color_option_id ?? "general"}`;
+    const expected = expectedImages.get(scope);
+    return expected !== undefined && !expected.image_urls.has(image.image_url as string);
+  }).map((image) => image.id as string);
+  if (staleIds.length) {
+    const { error: staleDeleteError } = await supabase.from("product_images").delete().in("id", staleIds);
+    if (staleDeleteError) {
+      return NextResponse.json({
+        error: `Products and images were saved, but outdated image links could not be removed. ${staleDeleteError.message}`,
         productsSaved: parsed.records.length,
       }, { status: 500 });
     }

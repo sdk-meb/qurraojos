@@ -1,6 +1,5 @@
--- Standalone schema for a fresh Supabase project.
--- Apply this script instead of the existing catalogue migrations.
--- No category or product data is inserted by this script.
+-- Core schema for a fresh Supabase project.
+-- Run store_categories.sql afterward to seed category and color reference data.
 
 begin;
 
@@ -14,6 +13,21 @@ create table if not exists public.categories (
   ),
   description jsonb not null default '{}'::jsonb
     check (jsonb_typeof(description) = 'object'),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.colors (
+  id text primary key check (id ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+  label jsonb not null check (
+    jsonb_typeof(label) = 'object'
+    and length(trim(coalesce(label ->> 'ar', ''))) > 0
+    and length(trim(coalesce(label ->> 'en', ''))) > 0
+  ),
+  hex_color text not null check (hex_color ~ '^#[0-9A-Fa-f]{6}$'),
+  aliases text[] not null default '{}',
+  sort_order integer not null default 0,
+  active boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -31,19 +45,9 @@ create table if not exists public.products (
     check (jsonb_typeof(description) = 'object'),
   price_mad integer not null check (price_mad between 10 and 300),
   available boolean not null default true,
-  image_url text,
-  image_urls text[] not null default '{}',
-  variants jsonb not null default '[]'::jsonb check (
-    case
-      when jsonb_typeof(variants) = 'array'
-        then jsonb_array_length(variants) <= 8
-      else false
-    end
-  ),
   feed_item_id text unique,
   brand text,
   condition text check (condition is null or condition in ('new', 'used')),
-  product_url text,
   google_product_category text,
   fb_product_category text,
   age_group text,
@@ -56,100 +60,52 @@ create table if not exists public.products (
     check (quantity_to_sell_on_facebook is null or quantity_to_sell_on_facebook >= 1),
   feed_attributes jsonb not null default '{}'::jsonb
     check (jsonb_typeof(feed_attributes) = 'object'),
+  sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-alter table public.products
-  add column if not exists image_urls text[] not null default '{}',
-  add column if not exists feed_item_id text,
-  add column if not exists brand text,
-  add column if not exists condition text,
-  add column if not exists product_url text,
-  add column if not exists google_product_category text,
-  add column if not exists fb_product_category text,
-  add column if not exists age_group text,
-  add column if not exists material text,
-  add column if not exists regular_price_mad integer,
-  add column if not exists sale_price_mad integer,
-  add column if not exists quantity_to_sell_on_facebook integer,
-  add column if not exists feed_attributes jsonb not null default '{}'::jsonb;
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'products_condition_check'
-      and conrelid = 'public.products'::regclass
-  ) then
-    alter table public.products add constraint products_condition_check
-      check (condition is null or condition in ('new', 'used'));
-  end if;
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'products_regular_price_mad_check'
-      and conrelid = 'public.products'::regclass
-  ) then
-    alter table public.products add constraint products_regular_price_mad_check
-      check (regular_price_mad is null or regular_price_mad between 10 and 300);
-  end if;
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'products_sale_price_mad_check'
-      and conrelid = 'public.products'::regclass
-  ) then
-    alter table public.products add constraint products_sale_price_mad_check
-      check (sale_price_mad is null or sale_price_mad between 10 and 300);
-  end if;
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'products_quantity_to_sell_check'
-      and conrelid = 'public.products'::regclass
-  ) then
-    alter table public.products add constraint products_quantity_to_sell_check
-      check (quantity_to_sell_on_facebook is null or quantity_to_sell_on_facebook >= 1);
-  end if;
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'products_feed_attributes_object_check'
-      and conrelid = 'public.products'::regclass
-  ) then
-    alter table public.products add constraint products_feed_attributes_object_check
-      check (jsonb_typeof(feed_attributes) = 'object');
-  end if;
-end;
-$$;
 
 create table if not exists public.product_color_options (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null
     references public.products(id) on delete cascade,
+  color_id text not null references public.colors(id),
   feed_item_id text unique,
-  color text not null check (length(trim(color)) > 0),
-  color_key text not null
-    check (color_key ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
-  label jsonb not null check (
-    jsonb_typeof(label) = 'object'
-    and length(trim(coalesce(label ->> 'ar', ''))) > 0
-  ),
   available boolean not null default true,
   price_mad integer check (price_mad is null or price_mad between 10 and 300),
-  image_url text,
-  image_urls text[] not null default '{}',
   source_title text,
   source_description text,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   constraint product_color_options_product_color_key
-    unique (product_id, color_key)
+    unique (product_id, color_id),
+  constraint product_color_options_product_id_id_key
+    unique (product_id, id)
+);
+
+create table if not exists public.product_images (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null
+    references public.products(id) on delete cascade,
+  color_option_id uuid,
+  image_url text not null check (length(trim(image_url)) > 0),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  constraint product_images_color_option_same_product_fk
+    foreign key (product_id, color_option_id)
+    references public.product_color_options(product_id, id) on delete cascade,
+  constraint product_images_product_scope_url_key
+    unique nulls not distinct (product_id, color_option_id, image_url)
 );
 
 create index if not exists products_category_id_idx on public.products (category_id);
 create index if not exists products_available_idx on public.products (available);
 create index if not exists product_color_options_product_id_idx
   on public.product_color_options (product_id);
-create index if not exists product_color_options_color_idx
-  on public.product_color_options (color);
+create index if not exists product_color_options_color_id_idx
+  on public.product_color_options (color_id);
+create index if not exists product_images_product_scope_order_idx
+  on public.product_images (product_id, color_option_id, sort_order);
 
 create or replace function public.set_product_updated_at()
 returns trigger
@@ -167,30 +123,41 @@ create trigger products_set_updated_at
   for each row execute function public.set_product_updated_at();
 
 alter table public.categories enable row level security;
+alter table public.colors enable row level security;
 alter table public.products enable row level security;
 alter table public.product_color_options enable row level security;
+alter table public.product_images enable row level security;
 
-grant select on public.categories, public.products, public.product_color_options
+grant select on public.categories, public.colors, public.products,
+  public.product_color_options, public.product_images
   to anon, authenticated;
 grant insert, update, delete
-  on public.categories, public.products, public.product_color_options
+  on public.categories, public.products, public.product_color_options,
+  public.product_images
   to authenticated;
 
 drop policy if exists "Categories are visible to everyone" on public.categories;
+drop policy if exists "Colors are visible to everyone" on public.colors;
 drop policy if exists "Products are visible to everyone" on public.products;
 drop policy if exists "Product colors are visible to everyone"
   on public.product_color_options;
+drop policy if exists "Product images are visible to everyone" on public.product_images;
 drop policy if exists "Store owner manages categories" on public.categories;
 drop policy if exists "Store owner manages products" on public.products;
 drop policy if exists "Store owner manages product colors"
   on public.product_color_options;
+drop policy if exists "Store owner manages product images" on public.product_images;
 
 create policy "Categories are visible to everyone"
   on public.categories for select using (true);
+create policy "Colors are visible to everyone"
+  on public.colors for select using (active);
 create policy "Products are visible to everyone"
   on public.products for select using (true);
 create policy "Product colors are visible to everyone"
   on public.product_color_options for select using (true);
+create policy "Product images are visible to everyone"
+  on public.product_images for select using (true);
 
 create policy "Store owner manages categories"
   on public.categories for all
@@ -202,6 +169,10 @@ create policy "Store owner manages products"
   with check ((auth.jwt() -> 'app_metadata' ->> 'store_owner') = 'true');
 create policy "Store owner manages product colors"
   on public.product_color_options for all
+  using ((auth.jwt() -> 'app_metadata' ->> 'store_owner') = 'true')
+  with check ((auth.jwt() -> 'app_metadata' ->> 'store_owner') = 'true');
+create policy "Store owner manages product images"
+  on public.product_images for all
   using ((auth.jwt() -> 'app_metadata' ->> 'store_owner') = 'true')
   with check ((auth.jwt() -> 'app_metadata' ->> 'store_owner') = 'true');
 
