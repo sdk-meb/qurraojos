@@ -4,9 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { categories, colorFromRow, getSupabase, productFromRows, productImageUrls, type Color, type Product, type ProductColorOption, type ProductImageRecord } from "@/lib/catalog";
 import { getCopy, localized, type Locale } from "@/lib/locale";
-import type { ProductCsvIssue } from "@/lib/product-csv";
 import { normalizeImageUrl } from "@/lib/image-url";
 import { ProductImage } from "@/components/product-image";
+import { MetaDriveImportWizard } from "@/components/meta-drive-import-wizard";
 
 function isHttpUrl(value: string) {
   try {
@@ -203,85 +203,6 @@ export function AdminDashboard() {
     addProductImageUrl(imageUrl);
     setManualImageUrl("");
     setStatus("");
-  }
-
-  async function importProductsCsv(file?: File) {
-    if (!file) return;
-    if (!session || session.user.app_metadata?.store_owner !== true) {
-      setStatus(labels.adminDenied);
-      return;
-    }
-    if (!file.name.toLowerCase().endsWith(".csv") || file.size > 2 * 1024 * 1024) {
-      setStatus(labels.csvInvalidFile);
-      return;
-    }
-
-    setBusy(true);
-    setStatus("");
-    try {
-      const describeIssues = (rows: ProductCsvIssue[]) => rows.map(({ line, reason }) => {
-        const reasonLabel = {
-          malformed: labels.csvRowMalformed,
-          missingName: labels.csvMissingName,
-          missingRequiredField: labels.csvMissingRequiredField,
-          invalidPrice: labels.csvInvalidPrice,
-          invalidAvailability: labels.csvInvalidAvailability,
-          invalidCondition: labels.csvInvalidCondition,
-          invalidQuantity: labels.csvInvalidQuantity,
-          invalidCategory: labels.csvInvalidCategory,
-          invalidUrl: labels.csvInvalidUrl,
-          invalidColor: labels.csvInvalidColor,
-          duplicate: labels.csvDuplicate,
-        }[reason];
-        return `${labels.csvRow} ${line}: ${reasonLabel}`;
-      }).join("; ");
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/admin/import-products", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: formData,
-      });
-      const responseText = await response.text();
-      type ImportResponse = {
-        error?: string;
-        imported?: number;
-        colorsImported?: number;
-        issues?: ProductCsvIssue[];
-      };
-      let result: ImportResponse;
-      try {
-        const payload: unknown = responseText ? JSON.parse(responseText) : null;
-        result = payload && typeof payload === "object" && !Array.isArray(payload)
-          ? payload as ImportResponse
-          : { error: `The server returned an empty or invalid response (HTTP ${response.status}).` };
-      } catch {
-        result = {
-          error: `The server returned an invalid response (HTTP ${response.status}). Check the server logs and database schema.`,
-        };
-      }
-      if (!response.ok) {
-        const issueSummary = result.issues?.length
-          ? ` ${describeIssues(result.issues)}`
-          : "";
-        setStatus(`${labels.csvImportError} ${result.error ?? labels.csvUnknownError}${issueSummary}`);
-        return;
-      }
-
-      const refreshed = await refreshProducts();
-      if (!refreshed) {
-        setStatus(`${labels.csvImportSuccess} ${result.imported ?? 0}. ${labels.adminLoadError}`);
-      } else {
-        const issues = result.issues ?? [];
-        const issueSummary = describeIssues(issues);
-        const colorSummary = result.colorsImported ? ` ${labels.csvColorsImported} ${result.colorsImported}.` : "";
-        setStatus(`${labels.csvImportSuccess} ${result.imported ?? 0}.${colorSummary}${issueSummary ? ` ${labels.csvSkipped} ${issues.length}: ${issueSummary}` : ""}`);
-      }
-    } catch (error) {
-      setStatus(`${labels.csvImportError} ${error instanceof Error ? error.message : labels.csvUnknownError}`);
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function saveProduct(event: FormEvent) {
@@ -554,10 +475,14 @@ async function browseDriveFolder(
           !isOwner ? <div className="setup-card"><p>{labels.adminDenied}</p><button className="button button-light" onClick={() => void supabase.auth.signOut()}>{labels.signOut}</button></div> :
           <>
             <div className="admin-toolbar"><p>{session.user.email}</p><button className="button button-light" onClick={() => void supabase.auth.signOut()}>{labels.signOut}</button></div>
-            <section className="csv-import" aria-label={labels.csvUpload}>
-                      <label className="field"><span>{labels.csvUpload}</span><input type="file" accept=".csv,text/csv" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importProductsCsv(file); }} /></label>
-              <p>{labels.csvHint}</p>
-            </section>
+            <MetaDriveImportWizard
+              colors={colors}
+              existingProducts={products}
+              language={language}
+              session={session}
+              supabase={supabase}
+              onSaved={refreshProducts}
+            />
             <form className="admin-editor" onSubmit={saveProduct}>
               <div className="editor-heading"><h2>{editing.id ? labels.edit : labels.newProduct}</h2><button className="button button-light" type="button" onClick={() => { setEditing(blankProduct()); setFeedAttributesText("{}"); setDriveFolderLink(""); setDriveTree(null); setDrivePath([]); setManualImageUrl(""); setSelectedColorKey(""); setSavedColorOptionIds([]); }}>{labels.newProduct} +</button></div>
               <div className="editor-grid">
