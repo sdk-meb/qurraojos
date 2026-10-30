@@ -94,6 +94,7 @@ create table if not exists public.product_images (
   constraint product_images_color_option_same_product_fk
     foreign key (product_id, color_option_id)
     references public.product_color_options(product_id, id) on delete cascade,
+  constraint product_images_image_url_global_key unique (image_url),
   constraint product_images_product_scope_url_key
     unique nulls not distinct (product_id, color_option_id, image_url)
 );

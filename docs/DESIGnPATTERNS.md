@@ -4,7 +4,7 @@ These patterns describe the current QurraOjos MVP. Keep the implementation light
 
 ## Product and color model
 
-Use a stable product ID and unique URL slug. Store localized product/category copy, an integer MAD price, explicit availability, feed metadata, and color options that reference the fixed `colors` registry. The admin does not create arbitrary color names or size variants. Keep image URLs only in `product_images`, one URL per row; null `color_option_id` denotes a product-wide image and a populated ID denotes a color-specific image. Validate slugs, color registry references, image URLs, and whole-dirham prices at the database/form boundary. The owner CSV uploader parses product rows directly; SQL scripts update schema/reference data only.
+Use a stable product ID and unique URL slug. Store localized product/category copy, an integer MAD price, explicit availability, feed metadata, and color options that reference the fixed `colors` registry. The admin does not create arbitrary color names or size variants. Keep image URLs only in `product_images`, one globally unique URL per row; null `color_option_id` denotes a product-wide image and a populated ID denotes a color-specific image. Validate slugs, color registry references, image URLs, and whole-dirham prices at the database/form boundary. The Meta + Drive import wizard stages records locally and requires an explicit per-product trust action before saving; SQL scripts update schema/reference data only.
 
 The browser cart references catalogue IDs only. Product names, availability, and prices are re-read from the current catalogue. Invalid, missing, and out-of-stock entries are surfaced and must be removed or corrected before a request can be created.
 
