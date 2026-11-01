@@ -1,2 +1,3 @@
 allowBuilds:
+  ngrok: false
   unrs-resolver: true
