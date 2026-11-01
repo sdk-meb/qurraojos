@@ -10,7 +10,7 @@ The customer-facing default is Arabic. French, English, and Spanish are also ava
 
 - Four catalogue categories: Birth Gifts (هدايا العقيقة), Child Rearing (تربية الأطفال), Children's Clothing (ملابس الأطفال), and Baby Supplies (مستلزمات الرضع).
 - A target of 12 operator-supplied launch products. Products may have fixed-registry color options; size variants and arbitrary color attributes are not part of this version.
-- Catalogue price range: 10–300 DH. Target gross margins are 15–25% below 50 DH, 20–30% from 50–200 DH, and 15–30% above 200 DH; margins are business targets, not app-enforced pricing rules.
+- Catalogue price range: 10–900 DH. Target gross margins are 15–25% below 50 DH, 20–30% from 50–200 DH, and 15–30% above 200 DH; margins are business targets, not app-enforced pricing rules.
 - Browse and search products, view details, choose an available color where applicable, and add/remove items from a cart that survives refreshes on the same device.
 - COD only. Checkout gathers the name, phone number, city, and delivery address temporarily, then opens an encoded WhatsApp order request for the customer to review and send.
 - Product availability, prices, localized names/descriptions, fixed color options, and images are maintained through a single-owner dashboard backed by Supabase. All general and color-specific image URLs live in one normalized `product_images` table.

@@ -584,7 +584,7 @@ export function MetaDriveImportWizard({
   function hasUnresolved(product: StagedProduct) {
     if (!product.name.trim() || !product.categoryId || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(product.slug) ||
       !product.feedItemId.trim() || product.priceMad === null || product.priceMad < 10 ||
-      product.priceMad > 300 || !Number.isInteger(product.priceMad) || product.available === null ||
+      product.priceMad > 900 || !Number.isInteger(product.priceMad) || product.available === null ||
       (product.conflictingSourceRows && !product.conflictResolved) ||
       (!product.folderName && !product.folderlessConfirmed)) return true;
     if (products.some((candidate) =>
@@ -1126,7 +1126,7 @@ export function MetaDriveImportWizard({
           });
         }} /></label>
         <div className="meta-drive-edit-grid">
-          <label className="field"><span>{text.price}</span><input type="number" min="10" max="300" step="1" value={currentProduct.priceMad ?? ""} disabled={isLocked} onChange={(event) =>
+          <label className="field"><span>{text.price}</span><input type="number" min="10" max="900" step="1" value={currentProduct.priceMad ?? ""} disabled={isLocked} onChange={(event) =>
             updateCurrent({ priceMad: event.target.value ? Number(event.target.value) : null })
           } /></label>
           <label className="field"><span>{text.availability}</span><select value={currentProduct.available === null ? "" : currentProduct.available ? "in-stock" : "out-of-stock"} disabled={isLocked} onChange={(event) =>

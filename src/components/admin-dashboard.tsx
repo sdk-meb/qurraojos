@@ -225,7 +225,7 @@ export function AdminDashboard() {
     const invalidColorOptions = colorOptions.some((option) =>
       !colors.some((color) => color.id === option.colorKey) ||
       !option.images.every((image) => isHttpUrl(image.url)) ||
-      (option.priceMad != null && (!Number.isInteger(option.priceMad) || option.priceMad < 10 || option.priceMad > 300)),
+      (option.priceMad != null && (!Number.isInteger(option.priceMad) || option.priceMad < 10 || option.priceMad > 900)),
     ) || new Set(colorOptions.map((option) => option.colorKey)).size !== colorOptions.length;
     if (
       invalidColorOptions ||
@@ -251,9 +251,9 @@ export function AdminDashboard() {
       feed_attributes: feedAttributes,
     };
     if (!record.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(record.slug) ||
-      !Number.isInteger(record.price_mad) || record.price_mad < 10 || record.price_mad > 300 ||
-      (record.regular_price_mad !== null && (!Number.isInteger(record.regular_price_mad) || record.regular_price_mad < 10 || record.regular_price_mad > 300)) ||
-      (record.sale_price_mad !== null && (!Number.isInteger(record.sale_price_mad) || record.sale_price_mad < 10 || record.sale_price_mad > 300)) ||
+      !Number.isInteger(record.price_mad) || record.price_mad < 10 || record.price_mad > 900 ||
+      (record.regular_price_mad !== null && (!Number.isInteger(record.regular_price_mad) || record.regular_price_mad < 10 || record.regular_price_mad > 900)) ||
+      (record.sale_price_mad !== null && (!Number.isInteger(record.sale_price_mad) || record.sale_price_mad < 10 || record.sale_price_mad > 900)) ||
       (record.quantity_to_sell_on_facebook !== null && (!Number.isInteger(record.quantity_to_sell_on_facebook) || record.quantity_to_sell_on_facebook < 1))) {
       setStatus(labels.invalidProduct);
       setBusy(false);
@@ -489,12 +489,12 @@ async function browseDriveFolder(
                 <label className="field"><span>{labels.productName}</span><input required value={editing.name?.ar ?? ""} onChange={(event) => setEditing({ ...editing, name: { ...blankProduct().name!, ...editing.name, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.productSlug}</span><input required value={editing.slug ?? ""} onChange={(event) => setEditing({ ...editing, slug: event.target.value })} /></label>
                 <label className="field"><span>{labels.category}</span><select required value={editing.categoryId ?? ""} onChange={(event) => setEditing({ ...editing, categoryId: event.target.value })}><option value="" disabled>{labels.csvCategory}</option>{categories.map((category) => <option key={category.id} value={category.id}>{localized(category.name, language)}</option>)}</select></label>
-                <label className="field"><span>{labels.productPrice}</span><input type="number" min="10" max="300" step="1" required value={editing.priceMad ?? 0} onChange={(event) => setEditing({ ...editing, priceMad: Number(event.target.value) })} /></label>
+                <label className="field"><span>{labels.productPrice}</span><input type="number" min="10" max="900" step="1" required value={editing.priceMad ?? 0} onChange={(event) => setEditing({ ...editing, priceMad: Number(event.target.value) })} /></label>
                 <label className="field"><span>{labels.csvItemId}</span><input value={editing.feedItemId ?? ""} onChange={(event) => setEditing({ ...editing, feedItemId: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvBrand}</span><input value={editing.brand ?? ""} onChange={(event) => setEditing({ ...editing, brand: event.target.value })} /></label>
                 <label className="field"><span>{labels.csvCondition}</span><input value={editing.condition ?? ""} onChange={(event) => setEditing({ ...editing, condition: event.target.value })} /></label>
-                <label className="field"><span>{labels.csvRegularPrice}</span><input type="number" min="10" max="300" step="1" value={editing.regularPriceMad ?? ""} onChange={(event) => setEditing({ ...editing, regularPriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
-                <label className="field"><span>{labels.csvSalePrice}</span><input type="number" min="10" max="300" step="1" value={editing.salePriceMad ?? ""} onChange={(event) => setEditing({ ...editing, salePriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
+                <label className="field"><span>{labels.csvRegularPrice}</span><input type="number" min="10" max="900" step="1" value={editing.regularPriceMad ?? ""} onChange={(event) => setEditing({ ...editing, regularPriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
+                <label className="field"><span>{labels.csvSalePrice}</span><input type="number" min="10" max="900" step="1" value={editing.salePriceMad ?? ""} onChange={(event) => setEditing({ ...editing, salePriceMad: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field"><span>{labels.csvQuantity}</span><input type="number" min="1" step="1" value={editing.quantityToSell ?? ""} onChange={(event) => setEditing({ ...editing, quantityToSell: event.target.value ? Number(event.target.value) : null })} /></label>
                 <label className="field field-full"><span>{labels.description}</span><textarea rows={3} value={editing.description?.ar ?? ""} onChange={(event) => setEditing({ ...editing, description: { ...blankProduct().description!, ...editing.description, ar: event.target.value } })} /></label>
                 <label className="field"><span>{labels.status}</span><select value={editing.availability} onChange={(event) => setEditing({ ...editing, availability: event.target.value as Product["availability"] })}><option value="in-stock">{labels.inStock}</option><option value="out-of-stock">{labels.outOfStock}</option></select></label>
@@ -508,7 +508,7 @@ async function browseDriveFolder(
                       </p>
                       <label className="field">
                         <span>{labels.colorPrice}</span>
-                        <input type="number" min="10" max="300" step="1" value={option.priceMad ?? ""} onChange={(event) => updateColorOption(index, {
+                        <input type="number" min="10" max="900" step="1" value={option.priceMad ?? ""} onChange={(event) => updateColorOption(index, {
                           priceMad: event.target.value ? Number(event.target.value) : null,
                         })} />
                       </label>

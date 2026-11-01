@@ -125,7 +125,7 @@ function parsePrice(value: string) {
   );
   if (!/^\d+(?:\.0+)?$/.test(normalized)) return null;
   const price = Number(normalized);
-  return Number.isInteger(price) && price >= 10 && price <= 300 ? price : null;
+  return Number.isInteger(price) && price >= 10 && price <= 900 ? price : null;
 }
 
 function parseAvailability(value: string) {
@@ -185,7 +185,7 @@ export function parseMetaCsv(text: string) {
     if (!name) sourceIssues.push("Product name is missing.");
 
     const priceMad = parsePrice(row.values[priceColumn] ?? "");
-    if (priceMad === null) sourceIssues.push("Price must be a whole MAD amount from 10 to 300.");
+    if (priceMad === null) sourceIssues.push("Price must be a whole MAD amount from 10 to 900.");
 
     const available = availabilityColumn < 0
       ? true
