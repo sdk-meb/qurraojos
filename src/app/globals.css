@@ -181,7 +181,21 @@ img { display: block; max-width: 100%; }
 .detail-description { margin: 20px 0; color: #767268; font-size: 12px; line-height: 1.9; }
 .stock-line { display: flex; align-items: center; gap: 7px; margin: 18px 0; color: #6c7661; font-size: 10px; }
 .stock-dot { width: 7px; height: 7px; border-radius: 50%; background: #6e9273; }.stock-dot.unavailable { background: #b77162; }
-.product-actions { display: grid; gap: 14px; margin-top: 20px; }
+ .product-actions { display: grid; gap: 14px; margin-top: 20px; }
+ .product-action-hint {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.cart-added-dialog {
+ position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgb(30 28 24 / 48%); }
+ .cart-added-panel { width: min(100%, 420px); padding: 30px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 20px 60px rgb(30 28 24 / 18%); text-align: center; }
+ .cart-added-panel h2 { margin: 0 0 8px; font-family: var(--serif); font-size: 28px; font-weight: 400; }
+ .cart-added-panel p { margin: 0 0 24px; color: var(--muted); }
+ .cart-added-actions { display: grid; gap: 10px; }
+ .cart-added-close { margin: 0 auto 16px; display: block; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+ .cart-added-close:hover { color: var(--ink); }
 .field { display: grid; gap: 7px; color: #706c62; font-size: 10px; }
 .field input, .field select, .field textarea { width: 100%; min-height: 41px; border: 1px solid #ded9cf; border-radius: 2px; padding: 9px 11px; color: var(--ink); background: #fffefa; font-size: 12px; }
 .field textarea { resize: vertical; }
