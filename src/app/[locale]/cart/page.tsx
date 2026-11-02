@@ -1,5 +1,5 @@
 import { CartPage } from "@/components/cart-page";
-import { getProducts } from "@/lib/catalog";
+import { getProducts } from "@/lib/catalog-server";
 import type { Locale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";

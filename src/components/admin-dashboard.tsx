@@ -64,6 +64,10 @@ export function AdminDashboard() {
   const labels = getCopy(language);
   const supabase = useMemo(() => getSupabase(), []);
 
+  const invalidateCatalogCache = useCallback(async () => {
+    await fetch("/api/catalog/revalidate", { method: "POST" });
+  }, []);
+
   const refreshProducts = useCallback(async () => {
     if (!supabase) return false;
     const [productsResult, colorsResult, imagesResult, colorRegistryResult] = await Promise.all([
@@ -105,7 +109,7 @@ export function AdminDashboard() {
       return;
     }
     void refreshProducts();
-  }, [supabase, session, labels.adminDenied, refreshProducts]);
+  }, [supabase, session, labels.adminDenied, refreshProducts, invalidateCatalogCache]);
 
   if (!supabase) return <main className="admin-page"><div className="admin-panel"><span className="eyebrow">QURRAOJOS · ADMIN</span><h1>{labels.adminTitle}</h1><p>{labels.adminSetup}</p><code>NEXT_PUBLIC_SUPABASE_URL<br />NEXT_PUBLIC_SUPABASE_ANON_KEY</code></div></main>;
 
@@ -370,6 +374,7 @@ export function AdminDashboard() {
     setColorToAdd("");
     setSavedColorOptionIds([]);
     setSavedImageIds([]);
+    await invalidateCatalogCache();
     await refreshProducts();
     setBusy(false);
   }
@@ -440,7 +445,11 @@ async function browseDriveFolder(
     if (!window.confirm(labels.confirmDelete)) return;
     const { error } = await supabase!.from("products").delete().eq("id", id);
     if (error) setStatus(`تعذر الحذف: ${error.message}`);
-    else { setProducts((current) => current.filter((product) => product.id !== id)); setStatus(labels.deleted); }
+    else {
+      await invalidateCatalogCache();
+      setProducts((current) => current.filter((product) => product.id !== id));
+      setStatus(labels.deleted);
+    }
   }
 
   function editProductImages(product: Product) {

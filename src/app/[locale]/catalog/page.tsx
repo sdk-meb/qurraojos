@@ -1,6 +1,7 @@
 import { ProductCard } from "@/components/product-card";
 import { CatalogFilters } from "@/components/catalog-filters";
-import { categories, getProducts } from "@/lib/catalog";
+import { categories } from "@/lib/catalog";
+import { getProducts } from "@/lib/catalog-server";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";

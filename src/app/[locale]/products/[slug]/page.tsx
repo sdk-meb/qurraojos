@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ProductConfigurator } from "@/components/product-configurator";
-import { findCategory, getProducts, isProductAvailable, productImageUrls } from "@/lib/catalog";
+import { findCategory, isProductAvailable, productImageUrls } from "@/lib/catalog";
+import { getProducts } from "@/lib/catalog-server";
 import { getCopy, localized, type Locale } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";

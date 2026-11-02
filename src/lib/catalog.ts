@@ -139,6 +139,9 @@ export function getSupabase() {
         autoRefreshToken: typeof window !== "undefined",
         detectSessionInUrl: typeof window !== "undefined",
       },
+      global: {
+        fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+      },
     },
   );
 }
@@ -231,7 +234,7 @@ export function productFromRows(
   });
 }
 
-export async function getProducts(): Promise<{ products: Product[]; demo: boolean; configured: boolean; error?: boolean }> {
+export async function getProductsUncached(): Promise<{ products: Product[]; demo: boolean; configured: boolean; error?: boolean }> {
   const supabase = getSupabase();
   if (!supabase) {
     return process.env.NODE_ENV !== "production"
